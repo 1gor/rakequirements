@@ -19,9 +19,8 @@ end
 
 SOURCE_DOCS = FileList["raw/processes/**/*tobe*.docx"]
 IDS = SOURCE_DOCS.map { |f| SDLC.extract_id(f) }
-        .group_by { |n| n[0] }
-        .values.flatten
-        # .compact.uniq
+  .group_by { |n| n[0] }
+  .values.flatten.compact.uniq
 
 desc "Foo"
 task :foo do
