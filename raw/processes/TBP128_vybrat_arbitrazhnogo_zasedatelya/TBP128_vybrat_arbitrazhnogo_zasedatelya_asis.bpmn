@@ -1,0 +1,378 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ns0:definitions xmlns:ns0="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:ns1="http://camunda.org/schema/modeler/1.0" xmlns:ns2="http://camunda.org/schema/zeebe/1.0" xmlns:ns3="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:ns4="http://www.omg.org/spec/DD/20100524/DC" xmlns:ns5="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Web Modeler" exporterVersion="e2ae5b5" ns1:executionPlatform="Camunda Cloud" ns1:executionPlatformVersion="8.7.0">
+  <ns0:collaboration id="Collaboration_1vulwco">
+    <ns0:participant id="Participant_1eag663" name="Суд" processRef="Process_0d8xxy8" />
+    <ns0:participant id="Participant_1xahgil" name="ЛУВД" processRef="Process_0kuct2h" />
+    <ns0:messageFlow id="Flow_08b515p" sourceRef="Activity_1tzafhv" targetRef="Event_15nq80i" />
+    <ns0:textAnnotation id="TextAnnotation_0bdqajq">
+      <ns0:text>Единолично судьей</ns0:text>
+    </ns0:textAnnotation>
+    <ns0:association id="Association_18v5198" associationDirection="None" sourceRef="Activity_01a6574" targetRef="TextAnnotation_0bdqajq" />
+  </ns0:collaboration>
+  <ns0:process id="Process_0d8xxy8" name="AS IS Выбрать арбитражного заседателя (ТП)" isExecutable="true">
+    <ns0:laneSet id="LaneSet_1acxlqv">
+      <ns0:lane id="Lane_0fcyybn" name="Судья">
+        <ns0:flowNodeRef>Event_0jn8til</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Activity_0qm6jrj</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Activity_14i30b1</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Gateway_04b7zw1</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Activity_01a6574</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Activity_1lsdvon</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Activity_0kw8wxw</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Gateway_0l21ds0</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Activity_1pqq9pt</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Activity_0alxy7f</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Activity_0bru8bs</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Activity_1dl09f3</ns0:flowNodeRef>
+      </ns0:lane>
+      <ns0:lane id="Lane_0dtxfp7" name="Канцелярия">
+        <ns0:flowNodeRef>Activity_1tzafhv</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Event_1hf5dqp</ns0:flowNodeRef>
+      </ns0:lane>
+    </ns0:laneSet>
+    <ns0:startEvent id="Event_0jn8til" name="0. Появилась необходимость выбрать арбитражного заседателя">
+      <ns0:outgoing>Flow_1l1d2pw</ns0:outgoing>
+    </ns0:startEvent>
+    <ns0:sequenceFlow id="Flow_1izd6lm" sourceRef="Activity_1pqq9pt" targetRef="Activity_0alxy7f" />
+    <ns0:sequenceFlow id="Flow_1omusb0" sourceRef="Activity_0alxy7f" targetRef="Activity_0bru8bs" />
+    <ns0:sequenceFlow id="Flow_18xnd65" sourceRef="Activity_1dl09f3" targetRef="Activity_0qm6jrj" />
+    <ns0:sequenceFlow id="Flow_0d75g8w" sourceRef="Activity_0qm6jrj" targetRef="Activity_14i30b1" />
+    <ns0:sequenceFlow id="Flow_01jxfel" sourceRef="Activity_0bru8bs" targetRef="Activity_1dl09f3" />
+    <ns0:sequenceFlow id="Flow_1sd3d31" name="Да" sourceRef="Gateway_04b7zw1" targetRef="Activity_01a6574" />
+    <ns0:sequenceFlow id="Flow_0byos9b" sourceRef="Activity_14i30b1" targetRef="Gateway_04b7zw1" />
+    <ns0:sequenceFlow id="Flow_1oy55ff" name="Нет" sourceRef="Gateway_04b7zw1" targetRef="Activity_1lsdvon" />
+    <ns0:sequenceFlow id="Flow_1kmwik8" sourceRef="Activity_01a6574" targetRef="Activity_0kw8wxw" />
+    <ns0:sequenceFlow id="Flow_0xrlnd0" sourceRef="Activity_0kw8wxw" targetRef="Gateway_0l21ds0" />
+    <ns0:sequenceFlow id="Flow_0j49flf" sourceRef="Activity_1lsdvon" targetRef="Gateway_0l21ds0" />
+    <ns0:sequenceFlow id="Flow_0vhjxlc" sourceRef="Gateway_0l21ds0" targetRef="Activity_1tzafhv" />
+    <ns0:sequenceFlow id="Flow_0fn29vc" sourceRef="Activity_1tzafhv" targetRef="Event_1hf5dqp" />
+    <ns0:manualTask id="Activity_0qm6jrj" name="5. Составить протокол назначения арбитражных заседателей">
+      <ns0:incoming>Flow_18xnd65</ns0:incoming>
+      <ns0:outgoing>Flow_0d75g8w</ns0:outgoing>
+    </ns0:manualTask>
+    <ns0:manualTask id="Activity_14i30b1" name="6. Приобщить протокол к материалам дела">
+      <ns0:incoming>Flow_0d75g8w</ns0:incoming>
+      <ns0:outgoing>Flow_0byos9b</ns0:outgoing>
+    </ns0:manualTask>
+    <ns0:exclusiveGateway id="Gateway_04b7zw1" name="7. После неоднократных отводов арбитражным заседателем невозможно сформировать состав суда?">
+      <ns0:incoming>Flow_0byos9b</ns0:incoming>
+      <ns0:outgoing>Flow_1sd3d31</ns0:outgoing>
+      <ns0:outgoing>Flow_1oy55ff</ns0:outgoing>
+    </ns0:exclusiveGateway>
+    <ns0:manualTask id="Activity_01a6574" name="9. Рассматривать единолично">
+      <ns0:incoming>Flow_1sd3d31</ns0:incoming>
+      <ns0:outgoing>Flow_1kmwik8</ns0:outgoing>
+    </ns0:manualTask>
+    <ns0:dataObjectReference id="DataObjectReference_1pr9a4b" name="Документ о назначении арбитражных заседателей" dataObjectRef="DataObject_07pjkvv" />
+    <ns0:dataObject id="DataObject_07pjkvv" />
+    <ns0:callActivity id="Activity_1lsdvon" name="8.ТБП49.Сформировать и подписать документ">
+      <ns0:extensionElements>
+        <ns2:calledElement propagateAllChildVariables="false" />
+      </ns0:extensionElements>
+      <ns0:incoming>Flow_1oy55ff</ns0:incoming>
+      <ns0:outgoing>Flow_0j49flf</ns0:outgoing>
+      <ns0:dataOutputAssociation id="DataOutputAssociation_1lcp62g">
+        <ns0:targetRef>DataObjectReference_1pr9a4b</ns0:targetRef>
+      </ns0:dataOutputAssociation>
+    </ns0:callActivity>
+    <ns0:callActivity id="Activity_0kw8wxw" name="10.ТБП49.Сформировать и подписать документ">
+      <ns0:extensionElements>
+        <ns2:calledElement propagateAllChildVariables="false" />
+      </ns0:extensionElements>
+      <ns0:incoming>Flow_1kmwik8</ns0:incoming>
+      <ns0:outgoing>Flow_0xrlnd0</ns0:outgoing>
+      <ns0:dataOutputAssociation id="DataOutputAssociation_1f0z9md">
+        <ns0:targetRef>DataObjectReference_0rwyyiz</ns0:targetRef>
+      </ns0:dataOutputAssociation>
+    </ns0:callActivity>
+    <ns0:exclusiveGateway id="Gateway_0l21ds0" name="11.">
+      <ns0:incoming>Flow_0xrlnd0</ns0:incoming>
+      <ns0:incoming>Flow_0j49flf</ns0:incoming>
+      <ns0:outgoing>Flow_0vhjxlc</ns0:outgoing>
+    </ns0:exclusiveGateway>
+    <ns0:dataObjectReference id="DataObjectReference_0rwyyiz" name="Документ о невозможности назначения арбитражных заседателей" dataObjectRef="DataObject_046s13d" />
+    <ns0:dataObject id="DataObject_046s13d" />
+    <ns0:callActivity id="Activity_1tzafhv" name="12.ТБП46.Направить документ">
+      <ns0:extensionElements>
+        <ns2:calledElement propagateAllChildVariables="false" />
+      </ns0:extensionElements>
+      <ns0:incoming>Flow_0vhjxlc</ns0:incoming>
+      <ns0:outgoing>Flow_0fn29vc</ns0:outgoing>
+    </ns0:callActivity>
+    <ns0:endEvent id="Event_1hf5dqp" name="13. Выбраны арбитражные заседатели">
+      <ns0:incoming>Flow_0fn29vc</ns0:incoming>
+    </ns0:endEvent>
+    <ns0:sequenceFlow id="Flow_1l1d2pw" sourceRef="Event_0jn8til" targetRef="Activity_1pqq9pt" />
+    <ns0:manualTask id="Activity_1pqq9pt" name="1. Открыть список арбитражных заседателей">
+      <ns0:incoming>Flow_1l1d2pw</ns0:incoming>
+      <ns0:outgoing>Flow_1izd6lm</ns0:outgoing>
+    </ns0:manualTask>
+    <ns0:manualTask id="Activity_0alxy7f" name="2. Запустить процедуру отбора арбитражных заседателей">
+      <ns0:incoming>Flow_1izd6lm</ns0:incoming>
+      <ns0:outgoing>Flow_1omusb0</ns0:outgoing>
+    </ns0:manualTask>
+    <ns0:manualTask id="Activity_0bru8bs" name="3. Отобрать арбитражных заседателей">
+      <ns0:incoming>Flow_1omusb0</ns0:incoming>
+      <ns0:outgoing>Flow_01jxfel</ns0:outgoing>
+    </ns0:manualTask>
+    <ns0:manualTask id="Activity_1dl09f3" name="4. Зафиксировать процедуру в протоколе">
+      <ns0:incoming>Flow_01jxfel</ns0:incoming>
+      <ns0:outgoing>Flow_18xnd65</ns0:outgoing>
+    </ns0:manualTask>
+  </ns0:process>
+  <ns0:process id="Process_0kuct2h" isExecutable="false">
+    <ns0:sequenceFlow id="Flow_0z30v4u" sourceRef="Event_15nq80i" targetRef="Activity_0kqk0f5" />
+    <ns0:sequenceFlow id="Flow_1i61kpx" sourceRef="Activity_0kqk0f5" targetRef="Gateway_0i61se2" />
+    <ns0:sequenceFlow id="Flow_1uflk5b" name="Да" sourceRef="Gateway_0i61se2" targetRef="Event_1e0gs3n" />
+    <ns0:sequenceFlow id="Flow_01z2l5z" name="Нет" sourceRef="Gateway_0i61se2" targetRef="Event_1grq5jt" />
+    <ns0:startEvent id="Event_15nq80i" name="14. Получить документ">
+      <ns0:outgoing>Flow_0z30v4u</ns0:outgoing>
+      <ns0:messageEventDefinition id="MessageEventDefinition_1azankw" />
+    </ns0:startEvent>
+    <ns0:manualTask id="Activity_0kqk0f5" name="15. Ознакомиться">
+      <ns0:incoming>Flow_0z30v4u</ns0:incoming>
+      <ns0:outgoing>Flow_1i61kpx</ns0:outgoing>
+    </ns0:manualTask>
+    <ns0:exclusiveGateway id="Gateway_0i61se2" name="16. Есть необходимость заявить отвод?">
+      <ns0:incoming>Flow_1i61kpx</ns0:incoming>
+      <ns0:outgoing>Flow_1uflk5b</ns0:outgoing>
+      <ns0:outgoing>Flow_01z2l5z</ns0:outgoing>
+    </ns0:exclusiveGateway>
+    <ns0:endEvent id="Event_1e0gs3n" name="17.Переход к процессу &quot;Отвод/Самоотвод судьи&quot;">
+      </ns0:endEvent>
+    <ns0:endEvent id="Event_1grq5jt" name="18. Лицо ознакомлено с документом">
+      <ns0:incoming>Flow_01z2l5z</ns0:incoming>
+    </ns0:endEvent>
+  </ns0:process>
+  <ns3:BPMNDiagram id="BPMNDiagram_1">
+    <ns3:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_1vulwco">
+      <ns3:BPMNShape id="Participant_1eag663_di" bpmnElement="Participant_1eag663" isHorizontal="true">
+        <ns4:Bounds x="400" y="40" width="1980" height="790" />
+        <ns3:BPMNLabel />
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Lane_0dtxfp7_di" bpmnElement="Lane_0dtxfp7" isHorizontal="true">
+        <ns4:Bounds x="430" y="650" width="1950" height="180" />
+        <ns3:BPMNLabel />
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Lane_0fcyybn_di" bpmnElement="Lane_0fcyybn" isHorizontal="true">
+        <ns4:Bounds x="430" y="40" width="1950" height="610" />
+        <ns3:BPMNLabel />
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Event_0jn8til_di" bpmnElement="Event_0jn8til">
+        <ns4:Bounds x="592" y="292" width="36" height="36" />
+        <ns3:BPMNLabel>
+          <ns4:Bounds x="571" y="335" width="79" height="66" />
+        </ns3:BPMNLabel>
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Activity_0q93dl4_di" bpmnElement="Activity_0qm6jrj">
+        <ns4:Bounds x="1400" y="270" width="100" height="80" />
+        <ns3:BPMNLabel />
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Activity_0h94a06_di" bpmnElement="Activity_14i30b1">
+        <ns4:Bounds x="1560" y="270" width="100" height="80" />
+        <ns3:BPMNLabel />
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="BPMNShape_0anmax9" bpmnElement="Gateway_04b7zw1" isMarkerVisible="true">
+        <ns4:Bounds x="1715" y="285" width="50" height="50" />
+        <ns3:BPMNLabel>
+          <ns4:Bounds x="1700" y="169" width="79" height="106" />
+        </ns3:BPMNLabel>
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="BPMNShape_1jgjo8u" bpmnElement="Activity_01a6574">
+        <ns4:Bounds x="1830" y="410" width="100" height="80" />
+        <ns3:BPMNLabel />
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="DataObjectReference_1pr9a4b_di" bpmnElement="DataObjectReference_1pr9a4b">
+        <ns4:Bounds x="2022" y="185" width="36" height="50" />
+        <ns3:BPMNLabel>
+          <ns4:Bounds x="2005" y="123" width="70" height="53" />
+        </ns3:BPMNLabel>
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Activity_10r4h9o_di" bpmnElement="Activity_1lsdvon">
+        <ns4:Bounds x="1990" y="270" width="100" height="80" />
+        <ns3:BPMNLabel />
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Activity_00y9x7w_di" bpmnElement="Activity_0kw8wxw">
+        <ns4:Bounds x="1990" y="410" width="100" height="80" />
+        <ns3:BPMNLabel />
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Gateway_0l21ds0_di" bpmnElement="Gateway_0l21ds0" isMarkerVisible="true">
+        <ns4:Bounds x="2155" y="425" width="50" height="50" />
+        <ns3:BPMNLabel>
+          <ns4:Bounds x="2222" y="440" width="15" height="14" />
+        </ns3:BPMNLabel>
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="DataObjectReference_0rwyyiz_di" bpmnElement="DataObjectReference_0rwyyiz">
+        <ns4:Bounds x="2052" y="505" width="36" height="50" />
+        <ns3:BPMNLabel>
+          <ns4:Bounds x="2031" y="562" width="79" height="66" />
+        </ns3:BPMNLabel>
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Activity_0id6pw3_di" bpmnElement="Activity_1tzafhv">
+        <ns4:Bounds x="2130" y="690" width="100" height="80" />
+        <ns3:BPMNLabel />
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Event_1hf5dqp_di" bpmnElement="Event_1hf5dqp">
+        <ns4:Bounds x="2282" y="712" width="36" height="36" />
+        <ns3:BPMNLabel>
+          <ns4:Bounds x="2265" y="755" width="70" height="40" />
+        </ns3:BPMNLabel>
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Activity_18f87zm_di" bpmnElement="Activity_1pqq9pt">
+        <ns4:Bounds x="750" y="270" width="100" height="80" />
+        <ns3:BPMNLabel />
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Activity_0m42asz_di" bpmnElement="Activity_0alxy7f">
+        <ns4:Bounds x="920" y="270" width="100" height="80" />
+        <ns3:BPMNLabel />
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Activity_0vvuqzh_di" bpmnElement="Activity_0bru8bs">
+        <ns4:Bounds x="1080" y="270" width="100" height="80" />
+        <ns3:BPMNLabel />
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Activity_1qcbchd_di" bpmnElement="Activity_1dl09f3">
+        <ns4:Bounds x="1240" y="270" width="100" height="80" />
+        <ns3:BPMNLabel />
+      </ns3:BPMNShape>
+      <ns3:BPMNEdge id="Flow_1izd6lm_di" bpmnElement="Flow_1izd6lm">
+        <ns5:waypoint x="850" y="310" />
+        <ns5:waypoint x="920" y="310" />
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="Flow_1omusb0_di" bpmnElement="Flow_1omusb0">
+        <ns5:waypoint x="1020" y="310" />
+        <ns5:waypoint x="1080" y="310" />
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="Flow_18xnd65_di" bpmnElement="Flow_18xnd65">
+        <ns5:waypoint x="1340" y="310" />
+        <ns5:waypoint x="1400" y="310" />
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="Flow_0d75g8w_di" bpmnElement="Flow_0d75g8w">
+        <ns5:waypoint x="1500" y="310" />
+        <ns5:waypoint x="1560" y="310" />
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="Flow_01jxfel_di" bpmnElement="Flow_01jxfel">
+        <ns5:waypoint x="1180" y="310" />
+        <ns5:waypoint x="1240" y="310" />
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="BPMNEdge_1ktxfil" bpmnElement="Flow_1sd3d31">
+        <ns5:waypoint x="1740" y="335" />
+        <ns5:waypoint x="1740" y="450" />
+        <ns5:waypoint x="1830" y="450" />
+        <ns3:BPMNLabel>
+          <ns4:Bounds x="1748" y="390" width="14" height="14" />
+        </ns3:BPMNLabel>
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="Flow_0byos9b_di" bpmnElement="Flow_0byos9b">
+        <ns5:waypoint x="1660" y="310" />
+        <ns5:waypoint x="1715" y="310" />
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="Flow_1oy55ff_di" bpmnElement="Flow_1oy55ff">
+        <ns5:waypoint x="1765" y="310" />
+        <ns5:waypoint x="1990" y="310" />
+        <ns3:BPMNLabel>
+          <ns4:Bounds x="1868" y="292" width="20" height="14" />
+        </ns3:BPMNLabel>
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="Flow_1kmwik8_di" bpmnElement="Flow_1kmwik8">
+        <ns5:waypoint x="1930" y="450" />
+        <ns5:waypoint x="1990" y="450" />
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="Flow_0xrlnd0_di" bpmnElement="Flow_0xrlnd0">
+        <ns5:waypoint x="2090" y="450" />
+        <ns5:waypoint x="2155" y="450" />
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="Flow_0j49flf_di" bpmnElement="Flow_0j49flf">
+        <ns5:waypoint x="2090" y="310" />
+        <ns5:waypoint x="2180" y="310" />
+        <ns5:waypoint x="2180" y="425" />
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="Flow_0vhjxlc_di" bpmnElement="Flow_0vhjxlc">
+        <ns5:waypoint x="2180" y="475" />
+        <ns5:waypoint x="2180" y="690" />
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="Flow_0fn29vc_di" bpmnElement="Flow_0fn29vc">
+        <ns5:waypoint x="2230" y="730" />
+        <ns5:waypoint x="2282" y="730" />
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="Flow_1l1d2pw_di" bpmnElement="Flow_1l1d2pw">
+        <ns5:waypoint x="628" y="310" />
+        <ns5:waypoint x="750" y="310" />
+      </ns3:BPMNEdge>
+      <ns3:BPMNShape id="Participant_1xahgil_di" bpmnElement="Participant_1xahgil" isHorizontal="true">
+        <ns4:Bounds x="2030" y="840" width="750" height="318" />
+        <ns3:BPMNLabel />
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Event_0ss1ojn_di" bpmnElement="Event_15nq80i">
+        <ns4:Bounds x="2162" y="952" width="36" height="36" />
+        <ns3:BPMNLabel>
+          <ns4:Bounds x="2146" y="995" width="68" height="27" />
+        </ns3:BPMNLabel>
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Activity_1ug8t65_di" bpmnElement="Activity_0kqk0f5">
+        <ns4:Bounds x="2250" y="930" width="100" height="80" />
+        <ns3:BPMNLabel />
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Gateway_0i61se2_di" bpmnElement="Gateway_0i61se2" isMarkerVisible="true">
+        <ns4:Bounds x="2405" y="945" width="50" height="50" />
+        <ns3:BPMNLabel>
+          <ns4:Bounds x="2390" y="895" width="79" height="40" />
+        </ns3:BPMNLabel>
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Event_0fcym79_di" bpmnElement="Event_1e0gs3n">
+        <ns4:Bounds x="2592" y="952" width="36" height="36" />
+        <ns3:BPMNLabel>
+          <ns4:Bounds x="2565" y="995" width="90" height="53" />
+        </ns3:BPMNLabel>
+      </ns3:BPMNShape>
+      <ns3:BPMNShape id="Event_1grq5jt_di" bpmnElement="Event_1grq5jt">
+        <ns4:Bounds x="2592" y="1062" width="36" height="36" />
+        <ns3:BPMNLabel>
+          <ns4:Bounds x="2572" y="1105" width="77" height="40" />
+        </ns3:BPMNLabel>
+      </ns3:BPMNShape>
+      <ns3:BPMNEdge id="Flow_0z30v4u_di" bpmnElement="Flow_0z30v4u">
+        <ns5:waypoint x="2198" y="970" />
+        <ns5:waypoint x="2250" y="970" />
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="Flow_1i61kpx_di" bpmnElement="Flow_1i61kpx">
+        <ns5:waypoint x="2350" y="970" />
+        <ns5:waypoint x="2405" y="970" />
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="Flow_1uflk5b_di" bpmnElement="Flow_1uflk5b">
+        <ns5:waypoint x="2455" y="970" />
+        <ns5:waypoint x="2592" y="970" />
+        <ns3:BPMNLabel>
+          <ns4:Bounds x="2475" y="952" width="14" height="14" />
+        </ns3:BPMNLabel>
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="Flow_01z2l5z_di" bpmnElement="Flow_01z2l5z">
+        <ns5:waypoint x="2430" y="995" />
+        <ns5:waypoint x="2430" y="1080" />
+        <ns5:waypoint x="2592" y="1080" />
+        <ns3:BPMNLabel>
+          <ns4:Bounds x="2435" y="1035" width="20" height="14" />
+        </ns3:BPMNLabel>
+      </ns3:BPMNEdge>
+      <ns3:BPMNShape id="BPMNShape_00et5mz" bpmnElement="TextAnnotation_0bdqajq">
+        <ns4:Bounds x="1820" y="510" width="99.99999822778292" height="40.65040650406504" />
+        <ns3:BPMNLabel />
+      </ns3:BPMNShape>
+      <ns3:BPMNEdge id="DataOutputAssociation_1lcp62g_di" bpmnElement="DataOutputAssociation_1lcp62g">
+        <ns5:waypoint x="2039" y="270" />
+        <ns5:waypoint x="2038" y="235" />
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="DataOutputAssociation_1f0z9md_di" bpmnElement="DataOutputAssociation_1f0z9md">
+        <ns5:waypoint x="2055" y="490" />
+        <ns5:waypoint x="2061" y="505" />
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="Flow_08b515p_di" bpmnElement="Flow_08b515p">
+        <ns5:waypoint x="2180" y="770" />
+        <ns5:waypoint x="2180" y="952" />
+      </ns3:BPMNEdge>
+      <ns3:BPMNEdge id="BPMNEdge_1xkr179" bpmnElement="Association_18v5198">
+        <ns5:waypoint x="1875" y="490" />
+        <ns5:waypoint x="1872" y="510" />
+      </ns3:BPMNEdge>
+    </ns3:BPMNPlane>
+  </ns3:BPMNDiagram>
+</ns0:definitions>
