@@ -7,6 +7,82 @@ require "open3"
 module KotUtils
   module_function
 
+  # Main entry point for extract_steps rake task
+  # @param source_file [String] Path to the source docx file
+  # @param csv_path [String] Path where CSV output should be written
+  # @param error_path [String] Path where error markdown should be written if no table found
+  def extract_steps_table(source_file:, csv_path:, error_path:)
+    log "Processing: #{source_file}"
+
+    doc = Docx::Document.open(source_file)
+
+    # Heuristic: Find the steps table
+    # Looking for tables with "действия" (actions) and "роль" (role) columns
+    steps_table = find_steps_table(doc)
+
+    unless steps_table
+      # No valid table found - write error file
+      write_error_file(error_path, source_file)
+      log "[Warn] No steps table found. Error written to #{error_path}"
+      return
+    end
+
+    # Success - write CSV
+    write_csv(csv_path, steps_table)
+    log "[OK] CSV written to #{csv_path}"
+  end
+
+  # Find the steps table using heuristics
+  def find_steps_table(doc)
+    doc.tables.detect do |tbl|
+      next false if tbl.rows.empty?
+
+      header = tbl.rows[0].cells.map { |c| c.text.strip }
+      # Look for columns containing "действия" (actions) and "роль" (role)
+      header.any? { |h| h.include?("действия") } &&
+        header.any? { |h| h.downcase.include?("роль") }
+    end
+  end
+
+  # Write the steps table to CSV
+  def write_csv(path, table)
+    ensure_dir(path)
+    atomic_write(path) do |temp_path|
+      CSV.open(temp_path, "w", encoding: "utf-8") do |csv|
+        table.rows.each do |row|
+          csv << row.cells.map(&:text)
+        end
+      end
+    end
+  end
+
+  # Write error markdown file
+  def write_error_file(path, source_file)
+    ensure_dir(path)
+    File.write(path, <<~MD)
+      # Steps Table Extraction Error
+
+      **Source File:** `#{source_file}`
+      **Timestamp:** #{Time.now}
+
+      ## Issue
+
+      No valid steps table could be found in the document.
+
+      ## Heuristics Used
+
+      The extractor looks for a table with:
+      - A column containing "действия" (actions)
+      - A column containing "роль" (role)
+
+      ## Next Steps
+
+      1. Open the source document
+      2. Verify the table structure
+      3. Ensure column headers match the expected pattern
+    MD
+  end
+
   def materialize_csv(t, _args)
     log "Processing atom: #{t.source}"
     ensure_dir(t.name)
