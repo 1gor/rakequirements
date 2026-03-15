@@ -11,7 +11,9 @@ module KotUtils
   # @param source_file [String] Path to the source docx file
   # @param csv_path [String] Path where CSV output should be written
   # @param error_path [String] Path where error markdown should be written if no table found
-  def extract_steps_table(source_file:, csv_path:, error_path:)
+  # @param from_asis_path [String] Path for marker file when using asis fallback
+  # @return [Symbol] :success, :from_asis, or :error
+  def extract_steps_table(source_file:, csv_path:, error_path:, from_asis_path: nil)
     log "Processing: #{source_file}"
 
     doc = Docx::Document.open(source_file)
@@ -24,12 +26,79 @@ module KotUtils
       # No valid table found - write error file
       write_error_file(error_path, source_file)
       log "[Warn] No steps table found. Error written to #{error_path}"
-      return
+      return :error
     end
 
     # Success - write CSV
     write_csv(csv_path, steps_table)
     log "[OK] CSV written to #{csv_path}"
+    :success
+  end
+
+  # Extract steps with fallback from tobe to asis
+  # @param tobe_file [String] Path to the tobe docx file
+  # @param asis_file [String] Path to the asis docx file (fallback)
+  # @param csv_path [String] Path where CSV output should be written
+  # @param error_path [String] Path where error markdown should be written if no table found in either file
+  # @param from_asis_path [String] Path for marker file when using asis fallback
+  # @return [Symbol] :success, :from_asis, or :error
+  def extract_steps_table_with_fallback(tobe_file:, asis_file:, csv_path:, error_path:, from_asis_path:)
+    log "Trying tobe file: #{tobe_file}"
+
+    doc = Docx::Document.open(tobe_file)
+    steps_table = find_steps_table(doc)
+
+    if steps_table
+      # Success from tobe - clean up any stale error files
+      write_csv(csv_path, steps_table)
+      cleanup_error_files(File.dirname(csv_path), File.basename(csv_path, ".*"))
+      log "[OK] CSV written to #{csv_path} (from tobe)"
+      return :success
+    end
+
+    # tobe failed, try asis fallback
+    log "[Warn] No steps table in tobe file. Trying asis fallback: #{asis_file}"
+
+    unless File.exist?(asis_file)
+      write_error_file(error_path, tobe_file)
+      log "[Error] No asis file found. Error written to #{error_path}"
+      return :error
+    end
+
+    doc = Docx::Document.open(asis_file)
+    steps_table = find_steps_table(doc)
+
+    unless steps_table
+      # Both failed
+      write_error_file(error_path, asis_file)
+      log "[Error] No steps table in asis file either. Error written to #{error_path}"
+      return :error
+    end
+
+    # Success from asis - write CSV, marker file, and clean up any stale error files
+    write_csv(csv_path, steps_table)
+    FileUtils.touch(from_asis_path)
+    cleanup_error_files(File.dirname(csv_path), File.basename(csv_path, ".*"))
+    log "[OK] CSV written to #{csv_path} (from asis). Marker: #{from_asis_path}"
+    :from_asis
+  end
+
+  # Clean up error files in the work directory after successful extraction
+  # @param dir [String] Directory to clean up (e.g., work/KBP4)
+  # @param base_name [String] Base name without extension (e.g., KBP4_steps)
+  def cleanup_error_files(dir, base_name)
+    # Remove old error files with various naming patterns
+    patterns = [
+      File.join(dir, "*_error*.md"),
+      File.join(dir, "*_steps_error.md")
+    ]
+
+    patterns.each do |pattern|
+      Dir.glob(pattern).each do |file|
+        FileUtils.rm_f(file)
+        log "[Cleanup] Removed stale error file: #{file}"
+      end
+    end
   end
 
   # Find the steps table using heuristics

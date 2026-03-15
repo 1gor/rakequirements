@@ -11,30 +11,53 @@ task :extract_steps, [:process_id] do |_t, args|
   puts ";; Extracting steps for process: #{process_id}"
 
   # Find the tobe docx file
-  pattern = File.join(WORK_DIR, "raw", "processes", "#{process_id}_*", "*tobe*.docx")
-  files = Dir.glob(pattern)
+  tobe_pattern = File.join(WORK_DIR, "raw", "processes", "#{process_id}_*", "*tobe*.docx")
+  tobe_files = Dir.glob(tobe_pattern)
 
-  if files.empty?
-    raise "No matching 'tobe' file found for process_id '#{process_id}'. Pattern: #{pattern}"
+  if tobe_files.empty?
+    raise "No matching 'tobe' file found for process_id '#{process_id}'. Pattern: #{tobe_pattern}"
   end
 
-  source_file = files.first
-  puts ";; Found source file: #{source_file}"
+  tobe_file = tobe_files.first
+  puts ";; Found tobe file: #{tobe_file}"
+
+  # Find the asis docx file (fallback)
+  asis_pattern = File.join(WORK_DIR, "raw", "processes", "#{process_id}_*", "*asis*.docx")
+  asis_files = Dir.glob(asis_pattern)
+  asis_file = asis_files.first
+
+  if asis_file
+    puts ";; Found asis fallback: #{asis_file}"
+  else
+    puts ";; No asis fallback available"
+  end
 
   # Define output paths
   output_dir = File.join(WORK_DIR, "work", process_id)
   csv_path = File.join(output_dir, "#{process_id}_steps.csv")
-  error_path = File.join(output_dir, "#{process_id}_steps_error.md")
+  error_path = File.join(output_dir, "#{process_id}_error_finding_steps_table.md")
+  from_asis_path = File.join(output_dir, "#{process_id}_steps_from_asis.md")
 
   # Ensure output directory exists
   FileUtils.mkdir_p(output_dir)
 
-  # Use KotUtils to extract the table
-  KotUtils.extract_steps_table(
-    source_file: source_file,
-    csv_path: csv_path,
-    error_path: error_path
-  )
+  # Use KotUtils to extract the table with fallback
+  if asis_file
+    KotUtils.extract_steps_table_with_fallback(
+      tobe_file: tobe_file,
+      asis_file: asis_file,
+      csv_path: csv_path,
+      error_path: error_path,
+      from_asis_path: from_asis_path
+    )
+  else
+    # No asis fallback - use simple extraction
+    KotUtils.extract_steps_table(
+      source_file: tobe_file,
+      csv_path: csv_path,
+      error_path: error_path
+    )
+  end
 end
 
 namespace :extract_steps do

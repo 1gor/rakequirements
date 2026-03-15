@@ -17,7 +17,11 @@ class Spinach::Features::ExtractProcessSteps < Spinach::FeatureSteps
   end
 
   def output_error_path
-    "work/#{@process_id}/#{@process_id}_steps_error.md"
+    "work/#{@process_id}/#{@process_id}_error_finding_steps_table.md"
+  end
+
+  def output_from_asis_path
+    "work/#{@process_id}/#{@process_id}_steps_from_asis.md"
   end
 
   # Scenario 1: File exists, table exists
@@ -50,18 +54,39 @@ class Spinach::Features::ExtractProcessSteps < Spinach::FeatureSteps
     raise "CSV should contain role and action columns" unless has_role || has_action
   end
 
-  # Scenario 2: File exists, table does not exist
-  # NOTE: This scenario requires a file without a valid steps table.
-  # Currently all real files in raw/ have valid tables.
-  # This scenario is marked pending until such a file is available.
-
+  # Scenario 2: File exists, table does not exist, fallback to asis
   step 'no csv table could be found in the file matched by steps table heuristics' do
-    pending "No real file without steps table available in raw/ directory"
+    # KBP4 is known to have a tobe file without valid steps table
+    # It has an asis file as fallback
+    @process_id = "KBP4"
+    @source_pattern = "raw/processes/#{@process_id}_*/*tobe*.docx"
+    files = Dir.glob(@source_pattern)
+    raise "Expected to find tobe file for KBP4" if files.empty?
+
+    # Verify asis fallback exists
+    asis_pattern = "raw/processes/#{@process_id}_*/*asis*.docx"
+    asis_files = Dir.glob(asis_pattern)
+    raise "Expected to find asis fallback for KBP4" if asis_files.empty?
   end
 
-  step 'work/<process_id>/<process_id>_steps_error.md file will be generated.' do
-    path = output_error_path
-    raise "Expected error file at #{path} to exist" unless File.exist?(path)
+  step 'a source docx file will be found by pattern raw/processes/<process_id>_<ignored logn name>/*asis*.docx" and a steps file will be generated from this fileinstead. No changes in raw/ directory will be made, and Sources module patterns will still work, but the failure to find tables will override the ource file logic from *tobe* to *asis*. An empty file work/<process_id>/<process_id>_steps_from_asis.md file will also be generated if successful csv is generated. If no tables are found again, an error file is placed work/<process_id>/<process_id>_error_finding_steps_table.md and no work/<process_id>/<process_id>_steps_from_asis.md file will be placed.' do
+    # Verify the task succeeded
+    raise "Expected rake task to succeed" unless @rake_status == 0
+
+    # Check for CSV output
+    csv_path = output_csv_path
+    raise "Expected CSV file at #{csv_path}" unless File.exist?(csv_path)
+
+    content = File.read(csv_path, encoding: "utf-8")
+    raise "CSV should not be empty" if content.strip.empty?
+
+    # Check for asis marker file (indicates fallback was used)
+    from_asis_path = output_from_asis_path
+    raise "Expected from_asis marker file at #{from_asis_path}" unless File.exist?(from_asis_path)
+
+    # Verify error file was NOT created (since we succeeded)
+    error_path = output_error_path
+    raise "Error file should NOT exist when asis fallback succeeds" if File.exist?(error_path)
   end
 
   # Scenario 3: File does not exist
