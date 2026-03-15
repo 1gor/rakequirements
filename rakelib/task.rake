@@ -60,6 +60,98 @@ task :extract_steps, [:process_id] do |_t, args|
   end
 end
 
+namespace :process do
+  desc "Extract markdown description from tobe docx using markitdown"
+  task :extract_md, [:process_id] do |_t, args|
+    process_id = args[:process_id]
+    raise ArgumentError, "process_id is required" unless process_id
+
+    puts ";; Extracting markdown for process: #{process_id}"
+
+    # Find the tobe docx file
+    tobe_pattern = File.join(WORK_DIR, "raw", "processes", "#{process_id}_*", "*tobe*.docx")
+    tobe_files = Dir.glob(tobe_pattern)
+
+    if tobe_files.empty?
+      raise "No matching 'tobe' file found for process_id '#{process_id}'. Pattern: #{tobe_pattern}"
+    end
+
+    tobe_file = tobe_files.first
+    puts ";; Found tobe file: #{tobe_file}"
+
+    # Define output paths
+    output_dir = File.join(WORK_DIR, "work", process_id)
+    md_path = File.join(output_dir, "#{process_id}_opis.md")
+    error_path = File.join(output_dir, "#{process_id}_md_conversion_error.md")
+
+    # Ensure output directory exists
+    FileUtils.mkdir_p(output_dir)
+
+    # Run markitdown and capture output
+    stdout, stderr, status = Open3.capture3("markitdown", tobe_file)
+
+    if status.success? && !stdout.strip.empty?
+      # Success - write markdown output
+      File.write(md_path, stdout)
+      # Clean up any stale error files
+      FileUtils.rm_f(error_path) if File.exist?(error_path)
+      puts "[OK] Markdown written to #{md_path}"
+    else
+      # Error - write error file
+      error_content = <<~MD
+        # Markdown Conversion Error
+
+        **Source File:** `#{tobe_file}`
+        **Timestamp:** #{Time.now}
+
+        ## Error Details
+
+        **Exit Code:** #{status.exitstatus}
+
+        ### stderr
+        ```
+        #{stderr}
+        ```
+
+        ### stdout (if any)
+        ```
+        #{stdout}
+        ```
+      MD
+      File.write(error_path, error_content)
+      puts "[Error] Conversion failed. Error written to #{error_path}"
+    end
+  end
+
+  desc "Extract markdown for all processes"
+  task :extract_all_md do
+    processes_dir = File.join(WORK_DIR, "raw", "processes")
+    process_ids = Dir.glob(File.join(processes_dir, "*"))
+                     .select { |d| File.directory?(d) }
+                     .map { |d| File.basename(d).split("_").first }
+                     .uniq
+
+    puts ";; Found #{process_ids.size} processes"
+
+    success_count = 0
+    error_count = 0
+
+    process_ids.sort.each do |pid|
+      puts ";; Processing #{pid}..."
+      begin
+        Rake::Task["process:extract_md"].reenable
+        Rake::Task["process:extract_md"].invoke(pid)
+        success_count += 1
+      rescue => e
+        puts ";; [Error] #{pid}: #{e.message}"
+        error_count += 1
+      end
+    end
+
+    puts ";; Completed: #{success_count} success, #{error_count} errors"
+  end
+end
+
 namespace :extract_steps do
   desc "Extract steps for all processes"
   task :all do
