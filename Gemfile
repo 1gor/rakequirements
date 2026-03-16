@@ -11,3 +11,7 @@ gem "spinach", "~> 0.12.0"
 
 gem "docx", "~> 0.10.0"
 gem "csv", "~> 3.3"
+
+gem "irb", "~> 1.17"
+
+gem "ruby_llm", "~> 1.13"
