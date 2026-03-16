@@ -1,0 +1,61 @@
+You are given a description of the business process with the {process_id} = '%{process_id}' taken from a BPMN2 diagram. It is a sequence of steps for several business actors.
+
+Focus on the "Описание процесса (актор и описание)" column to identify all participant actors in this workflow. If no such column exist, dedict participant actors (urser roles) from the text.
+
+## TASK
+Extract all unique actor roles and generate a JSON array of role objects with these fields:
+- `role_id`: Formatted as "%{process_id}-R-XX" (where XX is zero-padded sequential numbering: 01, 02, 03...)
+- `role`: The role name in Russian (singular form)
+- `description`: A concise description of this role's responsibilities within this specific process in Russian
+
+## RULES
+1. **Inclusion criteria:**
+   - ONLY include actors explicitly mentioned in the process steps
+   - Each role must represent a human or organizational participant
+
+2. **Exclusion criteria:**
+   - DO NOT include "Система" (System) or automated actors
+   - DO NOT include generic "Auto" roles
+
+3. **Role naming:**
+   - Use singular Russian nouns (e.g., "Судья" not "Судьи")
+   - Transform actor mentions from the steps into proper role titles using your knowledge of Russian arbitration court and general business knowledge
+   - Ensure role names are professional and appropriate for legal documentation
+
+4. **Description requirements:**
+   - Write compact, precise descriptions in Russian
+   - Focus on responsibilities specific to THIS process %{process_id}
+
+## EXPECTED JSON STRUCTURE EXAMPLE
+[
+  {
+    "role_id": "KBP1-R-01",
+    "role": "Истец",
+    "description": "Роль участника процесса, инициирующего исковое производство путем подачи искового заявления в суд. Обеспечивает представление доказательств, участие в судебных заседаниях и защиту своих законных интересов в процессе рассмотрения дела."
+  },
+  {
+    "role_id": "KBP1-R-02",
+    "role": "Ответчик",
+    "description": "Роль участника процесса, к которому предъявлены исковые требования. Обеспечивает подготовку и подачу отзыва на иск, представление возражений и доказательств, а также защиту своих интересов в ходе судебного разбирательства."
+  }
+]
+
+## CRITICAL: Handle System Role Anti-pattern
+
+Sometimes you will encounter process steps with System role ("Система", "Автоматический модуль", etc.). This is weak domain modeling and must be corrected.
+
+**NEVER create a System Role**, but do not lose steps associated with this role. Instead:
+
+1. Look at the context of surrounding steps (preceding and following human roles)
+2. Examine the `Входящие материалы` and `Исходящие материалы` columns for clues about actual responsibility
+3. Use your knowledge of Russian arbitrage courts to infer which human role is the actual actor in such use-cases
+4. Automated routing decisions, document categorization, and procedural determinations are **judicial functions** and should be assigned to **Судья**
+5. Ensure all text in the JSON output uses valid UTF-8 encoding and is in Russian (except role_id which is in Latin)
+
+## Constraints
+
+- ONLY create Role entities for column role values explicitly mentioned in the process steps
+- DO NOT create artificial specializations or theoretical organizational roles
+- Each role MUST correspond to a real actor mentioned in the process workflow, but does not need to be named exactly like the actor
+
+Output the JSON object.

@@ -43,7 +43,7 @@ EXTRACT_PROCESSES = ->(opis_path, dict_path, target_path) {
 TARGET_JSONLS = PROCESS_IDS.map { |id| "work/#{id}/#{id}_processes.jsonl" }
 
 desc "Extract related processes into JSONL context files"
-multitask processes_jsonls: TARGET_JSONLS
+multitask related_processes: TARGET_JSONLS
 
 # 2. THE RULE: Maps target -> [opis.md, processes.jsonl]
 rule(%r{^work/([^/]+)/\1_processes\.jsonl$} => [
