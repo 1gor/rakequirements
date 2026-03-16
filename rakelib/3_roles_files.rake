@@ -11,6 +11,10 @@ end
 
 LLM_MODEL = ENV["LLM_MODEL"] || "GLM-4.5-Air"
 ROLES_PROMPT_FILE = "raw/prompts/extract_roles.txt"
+PARTICIPANTS_FILE = "raw/data/grouped_participants.json"
+
+VALID_PARTICIPANT_CODES = JSON.parse(File.read(PARTICIPANTS_FILE, encoding: "UTF-8"))
+  .flat_map { |group| group["members"].map { |m| m["code"] } }
 
 # Strictly enforces the schema. If it fails, it raises an error
 # that we will feed directly back to the LLM.
@@ -42,22 +46,33 @@ VALIDATE_ROLES = ->(parsed_json) {
       #   raise "Non-Russian letters (e.g. English) detected in #{key}: '#{val}'. Use Russian only."
       # end
     end
+
+    # 4. Participant linkage validation
+    participant = role["participant"]
+    raise "Missing 'participant' in role at index #{i}" unless participant.is_a?(Hash)
+    raise "Missing 'code' in participant at index #{i}" unless participant.key?("code")
+    raise "Missing 'name' in participant at index #{i}" unless participant.key?("name")
+    unless VALID_PARTICIPANT_CODES.include?(participant["code"])
+      raise "Invalid participant code '#{participant["code"]}' at index #{i}. Valid codes: #{VALID_PARTICIPANT_CODES.join(", ")}"
+    end
   end
 
   roles
 }
 
-EXTRACT_ROLES = ->(opis_path, prompt_path, target_path) {
+EXTRACT_ROLES = ->(opis_path, prompt_path, participants_path, target_path) {
   id = target_path.match(%r{work/([^/]+)/})[1]
 
   # 1. Explicitly force UTF-8 on all our file reads
   user_prompt_template = File.read(prompt_path, encoding: "UTF-8")
   opis_content = File.read(opis_path, encoding: "UTF-8")
+  participants_content = File.read(participants_path, encoding: "UTF-8")
 
   # 2. Inject the dynamic ID into the template
-  user_prompt = user_prompt_template.gsub(/\{id\}|\#\{id\}/, id)
+  user_prompt = user_prompt_template % {process_id: id}
 
-  # 3. Append the file content directly to the prompt text
+  # 3. Append the file content and participants dictionary to the prompt text
+  user_prompt += "\n\n### СПРАВОЧНИК УЧАСТНИКОВ ПРОЦЕССА:\n#{participants_content}"
   user_prompt += "\n\n### ИСХОДНЫЙ ДОКУМЕНТ:\n#{opis_content}"
 
   system_prompt = %(
@@ -120,10 +135,12 @@ rule(%r{^work/([^/]+)/\1_roles\.jsonl$} => [
     id = t.match(%r{work/([^/]+)/})[1]
     "work/#{id}/#{id}_opis.md"
   end,
-  ROLES_PROMPT_FILE # <- Magic. If you edit the prompt, Rake regenerates all roles.
+  ROLES_PROMPT_FILE,
+  PARTICIPANTS_FILE
 ]) do |t|
   opis_file = t.prerequisites[0]
   prompt_file = t.prerequisites[1]
+  participants_file = t.prerequisites[2]
 
-  EXTRACT_ROLES.call(opis_file, prompt_file, t.name)
+  EXTRACT_ROLES.call(opis_file, prompt_file, participants_file, t.name)
 end
