@@ -123,6 +123,44 @@ namespace :process do
     end
   end
 
+  desc "Extract related processes from opis.md and create JSON context file"
+  task :related, [:process_id] do |_t, args|
+    process_id = args[:process_id]
+    raise ArgumentError, "process_id is required" unless process_id
+
+    puts ";; Extracting related processes for: #{process_id}"
+
+    KotUtils.extract_related_processes(process_id: process_id, work_dir: WORK_DIR)
+  end
+
+  desc "Extract related processes for all processes"
+  task :related_all do
+    processes_dir = File.join(WORK_DIR, "raw", "processes")
+    process_ids = Dir.glob(File.join(processes_dir, "*"))
+                     .select { |d| File.directory?(d) }
+                     .map { |d| File.basename(d).split("_").first }
+                     .uniq
+
+    puts ";; Found #{process_ids.size} processes"
+
+    success_count = 0
+    error_count = 0
+
+    process_ids.sort.each do |pid|
+      puts ";; Processing #{pid}..."
+      begin
+        Rake::Task["process:related"].reenable
+        Rake::Task["process:related"].invoke(pid)
+        success_count += 1
+      rescue => e
+        puts ";; [Error] #{pid}: #{e.message}"
+        error_count += 1
+      end
+    end
+
+    puts ";; Completed: #{success_count} success, #{error_count} errors"
+  end
+
   desc "Extract markdown for all processes"
   task :extract_all_md do
     processes_dir = File.join(WORK_DIR, "raw", "processes")
