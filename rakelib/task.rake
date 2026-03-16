@@ -5,11 +5,11 @@ PROCESS_MARKDOWN = ->(source, target) {
   sh "markitdown #{source} > #{target} 2>/dev/null"
 }
 
-# STAGE 1: The OPIS Rule (Same as before)
+# STAGE 1: call it with `rake work/KBP1/KBP1_opis.md`
 rule(%r{^work/([^/]+)/\1_opis\.md$} => [
   proc do |t|
     id = t.match(%r{work/([^/]+)/})[1]
-    Dir.glob("raw/processes/#{id}_*/#{id}*tobe*.docx").first
+    Sources.find_source_docx(id)
   end
 ]) do |t|
   PROCESS_MARKDOWN.call(t.source, t.name)
