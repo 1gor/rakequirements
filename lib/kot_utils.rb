@@ -3,192 +3,92 @@ require "docx"
 require "csv"
 require "fileutils"
 require "open3"
+require "json"
 
 module KotUtils
   module_function
 
-  def materialize_csv(t, _args)
-    log "Processing atom: #{t.source}"
-    ensure_dir(t.name)
+  # Extract related processes from opis.md and create JSON context file
+  # @param process_id [String] The main process ID (e.g., "KBP10")
+  # @param work_dir [String] The working directory
+  # @return [Array<Hash>] Array of process hashes with process_id, name, description
+  def extract_related_processes(process_id:, work_dir:)
+    # Paths
+    opis_path = File.join(work_dir, "work", process_id, "#{process_id}_opis.md")
+    processes_jsonl_path = File.join(work_dir, "raw", "data", "processes.jsonl")
+    output_path = File.join(work_dir, "work", process_id, "#{process_id}_processes.json")
 
-    doc = Docx::Document.open(t.source)
-
-    # Heuristic: Find the table
-    steps_table = doc.tables.detect do |tbl|
-      next if tbl.rows.empty?
-      header = tbl.rows[0].cells.map { |c| c.text.strip }
-      header.any? { |h| h.include?("действия") } &&
-        header.any? { |h| h.downcase.include?("роль") }
+    unless File.exist?(opis_path)
+      raise "opis.md file not found: #{opis_path}"
     end
 
-    # FAILURE PATH
-    unless steps_table
-      # 1. Define the failure artefact path
-      fail_dir = "build/failures"
-      ensure_dir("#{fail_dir}/placeholder")
+    # Load process metadata lookup
+    processes_lookup = load_processes_lookup(processes_jsonl_path)
 
-      err_filename = File.basename(t.source, ".*") + "_error.txt"
-      err_path = File.join(fail_dir, err_filename)
-
-      error_msg = "No valid 'steps' table found in #{t.source} \nTimestamp: #{Time.now}"
-
-      # 2. Write the failure log (So you can debug later)
-      File.write(err_path, error_msg)
-      log "[Warn] No table found. Logged to #{err_path}"
-
-      # 3. CRITICAL CHANGE: Graceful Degredation
-      # Do not raise. Instead, create an empty file.
-      # Rake considers the task "done".
-      # Downstream tasks (summarize_steps) will see it is 0 bytes and report "EMPTY".
-      FileUtils.touch(t.name)
-      return
+    # Get main process info
+    main_process = processes_lookup[process_id]
+    unless main_process
+      raise "Main process not found in processes.jsonl: #{process_id}"
     end
 
-    # SUCCESS PATH
-    atomic_write(t.name) do |temp_path|
-      CSV.open(temp_path, "w", encoding: "utf-8") do |csv|
-        # docx gem parsing...
-        rows = steps_table.rows.map { |r| r.cells.map(&:text) }
-        rows.each { |r| csv << r }
-      end
-    end
-  end
+    # Find related process IDs in opis.md
+    opis_content = File.read(opis_path)
+    related_ids = extract_process_codes(opis_content, exclude: process_id)
 
-  def copy_text(t, _args)
-    log "Copying ignored file: #{t.source}"
-    ensure_dir(t.name)
-    FileUtils.cp(t.source, t.name)
-  end
+    # Build result array: main process first, then related processes
+    result = [main_process.slice("process_id", "name", "description")]
 
-  def ensure_dir(path)
-    FileUtils.mkdir_p(File.dirname(path))
-  end
-
-  def log(msg)
-    puts ";; [Thread: #{Thread.current.object_id}] #{msg}"
-  end
-
-  # Reducer: [CSV, CSV, ...] -> Markdown Report
-  def summarize_steps(t, _args)
-    log "Reducing results into summary: #{t.name}"
-    ensure_dir(t.name)
-
-    # 1. Gather Data (The Reduce Loop)
-    # t.prerequisites contains the list of all CSV files Rake ensured are up-to-date
-    stats = t.prerequisites.map do |csv_path|
-      if File.zero?(csv_path)
-        {file: csv_path, status: "EMPTY (No Table)", rows: 0}
+    related_ids.sort.each do |related_id|
+      if (related_process = processes_lookup[related_id])
+        result << related_process.slice("process_id", "name", "description")
       else
-        row_count = File.foreach(csv_path).count
-        {file: csv_path, status: "OK", rows: row_count}
+        log "[Warn] Related process not found in processes.jsonl: #{related_id}"
       end
     end
 
-    # 2. Format Output
-    File.open(t.name, "w") do |f|
-      f.puts "# ETL Processing Summary"
-      f.puts "Generated at: #{Time.now}"
-      f.puts "\n| Process ID | Status | Rows | Artefact Path |"
-      f.puts "|---|---|---|---|"
+    # Write output as JSON array
+    ensure_dir(output_path)
+    File.write(output_path, JSON.pretty_generate(result))
+    log "[OK] Written #{result.size} processes to #{output_path}"
 
-      stats.each do |s|
-        # Extract "KBP10" from "build/procs/KBP10/KBP10_steps.csv"
-        proc_id = s[:file].split("/")[-2]
-        f.puts "| #{proc_id} | #{s[:status]} | #{s[:rows]} | `#{s[:file]}` |"
-      end
+    result
+  end
 
-      f.puts "\n**Total Files Processed:** #{stats.size}"
-      f.puts "**Total Rows Generated:** #{stats.sum { |s| s[:rows] }}"
+  # Load processes.jsonl into a lookup hash keyed by process_id
+  # @param path [String] Path to processes.jsonl
+  # @return [Hash] Lookup hash with process_id as key
+  def load_processes_lookup(path)
+    lookup = {}
+    File.foreach(path) do |line|
+      next if line.strip.empty?
+      row = JSON.parse(line)
+      lookup[row["process_id"]] = row
+    end
+    lookup
+  end
+
+  # Extract unique process codes (KBP*, TBP*, OBP*) from text
+  # @param text [String] Text to search
+  # @param exclude [String] Process ID to exclude
+  # @return [Array<String>] Unique sorted array of process IDs
+  def extract_process_codes(text, exclude:)
+    # Match patterns like KBP10, ТБП7, TBP53, OBP37, etc.
+    # Both Cyrillic (КБП, ТБП, ОБП) and Latin (KBP, TBP, OBP) variants
+    codes = []
+
+    # Use gsub with block to capture and normalize codes
+    text.gsub(/(?:KBP|КБП|TBP|ТБП|OBP|ОБП)\d+/i) do |match|
+      # Normalize to Latin uppercase prefix
+      code = match.upcase
+        .gsub("КБП", "KBP")
+        .gsub("ТБП", "TBP")
+        .gsub("ОБП", "OBP")
+      codes << code
     end
 
-    log "Summary generated: #{t.name}"
+    codes.uniq.sort.reject { |code| code == exclude }
   end
 
-  # The only "magic" we need:
-  # Creates ephemeral files in build/active/ so you can 'watch' progress.
-  def with_status(id, operation)
-    status_file = "build/active/#{id}.#{operation}"
-    FileUtils.mkdir_p(File.dirname(status_file))
-    FileUtils.touch(status_file)
-
-    yield # Run the block (The actual work)
-  ensure
-    FileUtils.rm_f(status_file)
-  end
-
-  def fetch_process_metadata(csv_path, process_id)
-    table = CSV.read(csv_path, headers: true)
-
-    # Look explicitly in the 'Название файла' column
-    row = table.detect do |r|
-      file_slug = r["Название файла"]&.strip
-      next false unless file_slug
-
-      file_slug == process_id ||
-        file_slug.start_with?("#{process_id}_")
-    end
-
-    return nil unless row
-
-    file_slug = row["Название файла"]&.strip
-    id = file_slug.split("_", 2).first
-
-    {
-      process_id: id,
-      name: row["Название процесса"]&.strip,
-      description: row["Описание"]&.strip, file_slug:   file_slug
-    }
-  end
-
-  # NEW METHOD: Robust CLI wrapper
-  def generate_with_retries(id, operation, prompt, retries: 3)
-    attempt = 0
-
-    # Write prompt to a temp file to avoid "Argument list too long" (E2BIG) errors
-    # This is safer than passing a massive string in ARGV
-    prompt_file = "tmp/#{id}_#{operation}_prompt.txt"
-    ensure_dir(prompt_file)
-    File.write(prompt_file, prompt)
-
-    begin
-      attempt += 1
-      log "Invoking LLM for #{id} [#{operation}] (Attempt #{attempt}/#{retries})..."
-
-      # We assume your 'claude' CLI can read from a file or accepts the prompt.
-      # If your CLI supports file input (e.g. -f), change this flag.
-      # Here we cat the file into the command to be safe and standard.
-      # "claude -p [CONTENT]"
-
-      # Using array syntax prevents shell injection
-      command = ["claude", "-p", prompt]
-
-      # CAPTURE OUTPUT
-      stdout, stderr, status = Open3.capture3(*command)
-
-      unless status.success?
-        raise "CLI Exit Code #{status.exitstatus}: #{stderr}"
-      end
-
-      # Return the raw content (JSON)
-      stdout
-    rescue => e
-      log "[Error] #{e.message}"
-
-      if attempt < retries
-        sleep_time = 2**attempt # Exponential backoff: 2s, 4s, 8s
-        log "Sleeping #{sleep_time}s before retry..."
-        sleep(sleep_time)
-        retry
-      else
-        log "[Fail] Exhausted retries for #{id}."
-        # Propagate error so Rake knows this task failed
-        raise e
-      end
-    ensure
-      # Cleanup the temp prompt file to keep the disk clean
-      FileUtils.rm_f(prompt_file)
-    end
-  end
 
   # THE ATOMIC WRITE PATTERN
   # Yields a temporary path. Only moves it to 'target_path' if the block succeeds.
@@ -196,7 +96,7 @@ module KotUtils
     # 1. Define a hidden temp path in the same directory (ensures atomic mv)
     temp_path = "#{target_path}.tmp.#{Time.now.to_f}"
 
-    ensure_dir(target_path)
+    FileUtils.mkdir_p(File.dirname(target_path))
 
     begin
       # 2. Let the caller write to the temp file
