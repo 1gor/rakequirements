@@ -3,6 +3,8 @@ require "standard/rake"
 
 $LOAD_PATH << "lib"
 require "sources"
+require "fileutils"
+require "open3"
 
 desc "Foo"
 task :foo do
