@@ -9,7 +9,7 @@ RubyLLM.configure do |config|
   config.openai_api_key = ENV.fetch("OPENAI_API_KEY")
 end
 
-LLM_MODEL = ENV["LLM_MODEL"] || "GLM-4.5-Air"
+LLM_MODEL = ENV["LLM_MODEL"] || "GLM-4.7"
 ROLES_PROMPT_FILE = "raw/prompts/extract_roles.txt"
 PARTICIPANTS_FILE = "raw/data/grouped_participants.json"
 
