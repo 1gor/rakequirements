@@ -4,7 +4,7 @@ PROCESSES_DICT = "raw/data/processes.jsonl"
 
 # Pure lambda: Input files -> Transformation -> Output file
 EXTRACT_PROCESSES = ->(opis_path, dict_path, target_path) {
-  id = target_path.match(%r{work/([^/]+)/})[1]
+  id = target_path.match(%r{work/ba/([^/]+)/})[1]
 
   # 1. Load dependencies into memory
   opis_content = File.read(opis_path)
@@ -40,16 +40,16 @@ EXTRACT_PROCESSES = ->(opis_path, dict_path, target_path) {
 }
 
 # 1. PULL ARCHITECTURE: Define the target state
-TARGET_JSONLS = PROCESS_IDS.map { |id| "work/#{id}/#{id}_processes.jsonl" }
+TARGET_JSONLS = PROCESS_IDS.map { |id| "work/ba/#{id}/#{id}_processes.jsonl" }
 
 desc "Extract related processes into JSONL context files"
-multitask processes_jsonls: TARGET_JSONLS
+multitask related_processes: TARGET_JSONLS
 
 # 2. THE RULE: Maps target -> [opis.md, processes.jsonl]
-rule(%r{^work/([^/]+)/\1_processes\.jsonl$} => [
+rule(%r{^work/ba/([^/]+)/\1_processes\.jsonl$} => [
   proc do |t|
-    id = t.match(%r{work/([^/]+)/})[1]
-    "work/#{id}/#{id}_opis.md"
+    id = t.match(%r{work/ba/([^/]+)/})[1]
+    "work/ba/#{id}/#{id}_opis.md"
   end,
   PROCESSES_DICT
 ]) do |t|

@@ -10,8 +10,8 @@ end
 
 MODEL = ENV["LLM_MODEL"] || "GLM-4.5-Air"
 id = "KBP1"
-file_opis = "/home/id/Work/FeatureTwin/rakequirements/work/#{id}/#{id}_opis.md"
-file_procs = "/home/id/Work/FeatureTwin/rakequirements/work/#{id}/#{id}_processes.jsonl"
+file_opis = "/home/id/Work/FeatureTwin/rakequirements/work/ba/#{id}/#{id}_opis.md"
+file_procs = "/home/id/Work/FeatureTwin/rakequirements/work/ba/#{id}/#{id}_processes.jsonl"
 
 [file_opis, file_procs].each do |f|
   unless File.read(f).size > 0

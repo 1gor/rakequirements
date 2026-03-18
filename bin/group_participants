@@ -1,0 +1,46 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'json'
+
+# Paths
+participants_file = File.join(__dir__, '..', 'raw', 'data', 'participants.jsonl')
+groups_file = File.join(__dir__, '..', 'raw', 'data', 'participant_groups.jsonl')
+output_file = File.join(__dir__, '..', 'raw', 'data', 'grouped_participants.json')
+
+# Read participant groups
+groups = []
+File.readlines(groups_file).each do |line|
+  line.strip!
+  next if line.empty?
+
+  groups << JSON.parse(line)
+end
+
+# Read participants
+participants = []
+File.readlines(participants_file).each do |line|
+  line.strip!
+  next if line.empty?
+
+  participants << JSON.parse(line)
+end
+
+# Group participants by participant_group_code
+participants_by_group = participants.group_by { |p| p['participant_group_code'] }
+
+# Build result with members nested in each group
+result = groups.map do |group|
+  group_code = group['code']
+  group_members = participants_by_group[group_code] || []
+
+  group.merge('members' => group_members)
+end
+
+# Write output as formatted JSON
+File.write(output_file, JSON.pretty_generate(result))
+
+puts "Created #{output_file} with #{result.size} groups"
+result.each do |g|
+  puts "  #{g['code']}: #{g['name']} (#{g['members'].size} members)"
+end
