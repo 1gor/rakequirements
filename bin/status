@@ -87,14 +87,8 @@ when "--warnings"
 
 else
   total_artifacts = process_ids.size * ARTIFACTS.size
-  puts "=== WORK/BA STATUS ==="
-  puts "Processes : #{process_ids.size} (from source docs)"
-  puts "Artifacts : #{totals[:ok]}/#{total_artifacts} ok  |  #{totals[:missing]} missing  |  #{totals[:empty]} empty  |  #{totals[:errors]} errors  |  #{totals[:warnings]} warnings"
-  puts ""
 
-  if problems.empty?
-    puts "All clean."
-  else
+  unless problems.empty?
     problems.each do |id, issues|
       puts "#{id}:"
       issues.each do |type, detail|
@@ -111,6 +105,11 @@ else
       end
     end
     puts ""
-    puts "#{problems.size}/#{process_ids.size} processes with issues"
   end
+
+  puts "=== WORK/BA STATUS ==="
+  puts "Processes : #{process_ids.size} (from source docs)"
+  puts "Artifacts : #{totals[:ok]}/#{total_artifacts} ok  |  #{totals[:missing]} missing  |  #{totals[:empty]} empty  |  #{totals[:errors]} errors  |  #{totals[:warnings]} warnings"
+  puts "#{problems.size}/#{process_ids.size} processes with issues" unless problems.empty?
+  puts "All clean." if problems.empty?
 end
