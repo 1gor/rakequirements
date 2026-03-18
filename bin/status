@@ -1,0 +1,83 @@
+#!/usr/bin/env ruby
+# bin/status — Show generation status across work/ba/ directories
+#
+# Usage:
+#   bin/status              # full dashboard
+#   bin/status --missing    # only show processes with missing artifacts
+#   bin/status --errors     # only show processes with .err files
+#   bin/status --empty      # only show processes with empty artifacts
+
+require "json"
+
+ARTIFACTS = %w[_opis.md _processes.jsonl _roles.jsonl _components.jsonl _user_stories.jsonl]
+WORK_DIR = File.expand_path("../work/ba", __dir__)
+
+filter = ARGV.first
+
+dirs = Dir.glob("#{WORK_DIR}/*/").sort_by { |d| File.basename(d) }
+
+totals = Hash.new(0)
+problems = []
+
+dirs.each do |dir|
+  id = File.basename(dir)
+  issues = []
+
+  ARTIFACTS.each do |suffix|
+    path = File.join(dir, "#{id}#{suffix}")
+    if !File.exist?(path)
+      issues << "MISSING  #{suffix}"
+      totals[:missing] += 1
+    elsif File.size(path) == 0
+      issues << "EMPTY    #{suffix}"
+      totals[:empty] += 1
+    else
+      totals[:ok] += 1
+    end
+  end
+
+  err_files = Dir.glob("#{dir}/*.err")
+  err_files.each do |ef|
+    issues << "ERROR    #{File.basename(ef)}"
+    totals[:errors] += 1
+  end
+
+  problems << [id, issues] unless issues.empty?
+end
+
+process_count = dirs.size
+artifact_count = process_count * ARTIFACTS.size
+
+case filter
+when "--missing"
+  problems.select! { |_, issues| issues.any? { |i| i.start_with?("MISSING") } }
+  problems.each do |id, issues|
+    issues.select { |i| i.start_with?("MISSING") }.each { |i| puts "#{id}: #{i}" }
+  end
+when "--empty"
+  problems.select! { |_, issues| issues.any? { |i| i.start_with?("EMPTY") } }
+  problems.each do |id, issues|
+    issues.select { |i| i.start_with?("EMPTY") }.each { |i| puts "#{id}: #{i}" }
+  end
+when "--errors"
+  problems.select! { |_, issues| issues.any? { |i| i.start_with?("ERROR") } }
+  problems.each do |id, issues|
+    issues.select { |i| i.start_with?("ERROR") }.each { |i| puts "#{id}: #{i}" }
+  end
+else
+  puts "=== WORK/BA STATUS ==="
+  puts "Processes: #{process_count}"
+  puts "Artifacts: #{totals[:ok]}/#{artifact_count} ok, #{totals[:missing]} missing, #{totals[:empty]} empty, #{totals[:errors]} errors"
+  puts ""
+
+  if problems.empty?
+    puts "All clean."
+  else
+    problems.each do |id, issues|
+      puts "#{id}:"
+      issues.each { |i| puts "  #{i}" }
+    end
+    puts ""
+    puts "#{problems.size} processes with issues"
+  end
+end
