@@ -1,5 +1,34 @@
+QUIET = %w[1 true yes].include?(ENV["QUIET"]&.downcase) unless defined?(QUIET)
 COMPONENTS_FILE = "raw/data/components.jsonl"
 COMPONENTS_PROMPT_FILE = "raw/prompts/map_components.txt"
+COMPONENTS_MODEL = ENV["COMPONENTS_MODEL"] || "claude-sonnet-4-5"
+
+# Z.ai Anthropic endpoint: uses Bearer auth instead of x-api-key
+RubyLLM.configure do |config|
+  config.anthropic_api_key = ENV.fetch("Z_API_KEY")
+  config.anthropic_api_base = "https://api.z.ai/api/anthropic"
+end
+
+module ZaiAuthPatch
+  def headers
+    super
+      .reject { |k, _| k.to_s.downcase == "x-api-key" }
+      .merge("Authorization" => "Bearer #{RubyLLM.config.anthropic_api_key}")
+  end
+end
+
+begin
+  RubyLLM::Providers::Anthropic::Connection.prepend(ZaiAuthPatch)
+rescue NameError
+  RubyLLM::Providers::Anthropic.prepend(ZaiAuthPatch)
+end
+
+# Strip markdown code fences that LLMs wrap around JSON when not using response_format
+def strip_json_fences(text)
+  text = text.strip
+  text = text.sub(/\A```(?:json)?\s*\n?/, "").sub(/\n?\s*```\z/, "") if text.start_with?("```")
+  text
+end
 
 VALID_COMPONENT_IDS = File.foreach(COMPONENTS_FILE)
   .map { |line| JSON.parse(line)["ID"] }
@@ -57,15 +86,20 @@ MAP_COMPONENTS = ->(opis_path, processes_path, prompt_path, components_path, tar
     You are an experienced business analyst and system architect with deep knowledge of Russian Arbitration Court processes. You write in fluent and correct technical Russian only, except for technical terms.
   ).strip
 
-  chat = RubyLLM.chat(
-    model: LLM_MODEL,
-    provider: :openai,
-    assume_model_exists: true
-  ).with_params(response_format: {type: "json_object"})
-    .with_instructions(system_prompt)
-    .with_temperature(0.2)
-
+  temperature = 0.2
   max_retries = 3
+
+  unless QUIET
+    warn "[#{id}] model=#{COMPONENTS_MODEL} temp=#{temperature} prompt=#{user_prompt.size} chars"
+  end
+
+  chat = RubyLLM.chat(
+    model: COMPONENTS_MODEL,
+    provider: :anthropic,
+    assume_model_exists: true
+  ).with_instructions(system_prompt)
+    .with_temperature(temperature)
+
   attempts = 0
   valid_mappings = nil
   last_error = nil
@@ -73,17 +107,23 @@ MAP_COMPONENTS = ->(opis_path, processes_path, prompt_path, components_path, tar
   while attempts < max_retries && !valid_mappings
     attempts += 1
     begin
+      t0 = Time.now
       msg = if attempts == 1
+        warn "[#{id}] Submitting to LLM (attempt 1/#{max_retries})..." unless QUIET
         chat.ask(user_prompt)
       else
-        warn "[WARN] #{id}: Retry #{attempts}/#{max_retries} due to: #{last_error}"
+        warn "[#{id}] Retry #{attempts}/#{max_retries} — #{last_error}" unless QUIET
         chat.ask("Your previous response failed schema validation: #{last_error}. Please correct your output and return ONLY the valid JSON array.")
       end
+      elapsed = (Time.now - t0).round(1)
 
-      parsed_json = JSON.parse(msg.content.dup.force_encoding("UTF-8"))
+      raw = msg.content.dup.force_encoding("UTF-8")
+      warn "[#{id}] Response received (#{elapsed}s, #{raw.size} chars). Validating..." unless QUIET
+      parsed_json = JSON.parse(strip_json_fences(raw))
       valid_mappings = VALIDATE_COMPONENTS.call(parsed_json)
     rescue JSON::ParserError, RuntimeError => e
       last_error = e.message
+      warn "[#{id}] Validation failed: #{last_error}" unless QUIET
     end
   end
 

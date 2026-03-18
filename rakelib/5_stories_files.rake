@@ -1,5 +1,5 @@
-QUIET = %w[1 true yes].include?(ENV["QUIET"]&.downcase)
 STORIES_PROMPT_FILE = "raw/prompts/extract_user_stories.txt"
+STORIES_MODEL = ENV["STORIES_MODEL"] || "claude-sonnet-4-5"
 
 # Build a lookup of full component definitions keyed by ID
 COMPONENTS_CATALOG = File.foreach(COMPONENTS_FILE)
@@ -109,15 +109,14 @@ EXTRACT_STORIES = ->(opis_path, roles_path, components_map_path, prompt_path, ta
 
   unless QUIET
     prompt_chars = user_prompt.size
-    warn "[#{id}] model=#{LLM_MODEL} temp=#{temperature} roles=#{valid_roles.size} components=#{mapped_component_ids.size} prompt=#{prompt_chars} chars"
+    warn "[#{id}] model=#{STORIES_MODEL} temp=#{temperature} roles=#{valid_roles.size} components=#{mapped_component_ids.size} prompt=#{prompt_chars} chars"
   end
 
   chat = RubyLLM.chat(
-    model: LLM_MODEL,
-    provider: :openai,
+    model: STORIES_MODEL,
+    provider: :anthropic,
     assume_model_exists: true
-  ).with_params(response_format: {type: "json_object"})
-    .with_instructions(system_prompt)
+  ).with_instructions(system_prompt)
     .with_temperature(temperature)
 
   attempts = 0
@@ -137,8 +136,9 @@ EXTRACT_STORIES = ->(opis_path, roles_path, components_map_path, prompt_path, ta
       end
       elapsed = (Time.now - t0).round(1)
 
-      warn "[#{id}] Response received (#{elapsed}s, #{msg.content.size} chars). Validating..." unless QUIET
-      parsed_json = JSON.parse(msg.content.dup.force_encoding("UTF-8"))
+      raw = msg.content.dup.force_encoding("UTF-8")
+      warn "[#{id}] Response received (#{elapsed}s, #{raw.size} chars). Validating..." unless QUIET
+      parsed_json = JSON.parse(strip_json_fences(raw))
       valid_stories = VALIDATE_STORIES.call(parsed_json, id, valid_roles, mapped_component_ids)
     rescue JSON::ParserError, RuntimeError => e
       last_error = e.message
