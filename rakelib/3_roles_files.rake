@@ -2,14 +2,36 @@ require "ruby_llm"
 require "json"
 require "kot_utils" # Brings in your atomic_write
 
-# Global Setup (Stateless)
+QUIET = %w[1 true yes].include?(ENV["QUIET"]&.downcase) unless defined?(QUIET)
+
+# Z.ai Anthropic endpoint: uses Bearer auth instead of x-api-key
 RubyLLM.configure do |config|
-  config.openai_use_system_role = true
-  config.openai_api_base = ENV.fetch("OPENAI_API_BASE")
-  config.openai_api_key = ENV.fetch("OPENAI_API_KEY")
+  config.anthropic_api_key = ENV.fetch("Z_API_KEY")
+  config.anthropic_api_base = "https://api.z.ai/api/anthropic"
 end
 
-LLM_MODEL = ENV["LLM_MODEL"] || "GLM-4.7"
+module ZaiAuthPatch
+  def headers
+    super
+      .reject { |k, _| k.to_s.downcase == "x-api-key" }
+      .merge("Authorization" => "Bearer #{RubyLLM.config.anthropic_api_key}")
+  end
+end
+
+begin
+  RubyLLM::Providers::Anthropic::Connection.prepend(ZaiAuthPatch)
+rescue NameError
+  RubyLLM::Providers::Anthropic.prepend(ZaiAuthPatch)
+end
+
+# Strip markdown code fences that LLMs wrap around JSON when not using response_format
+def strip_json_fences(text)
+  text = text.strip
+  text = text.sub(/\A```(?:json)?\s*\n?/, "").sub(/\n?\s*```\z/, "") if text.start_with?("```")
+  text
+end
+
+ROLES_MODEL = ENV["ROLES_MODEL"] || "claude-sonnet-4-5"
 ROLES_PROMPT_FILE = "raw/prompts/extract_roles.txt"
 PARTICIPANTS_FILE = "raw/data/grouped_participants.json"
 
@@ -79,15 +101,19 @@ EXTRACT_ROLES = ->(opis_path, prompt_path, participants_path, target_path) {
     You are an experienced business analyst with deep knowledge of Russian Arbitration Court processes and expertise in BPMN2 diagrams. You write in fluent and correct technical Russian only, except for technical terms.
   ).strip
 
-  chat = RubyLLM.chat(
-    model: LLM_MODEL,
-    provider: :openai,
-    assume_model_exists: true
-  ).with_params(response_format: {type: "json_object"})
-    .with_instructions(system_prompt)
-    .with_temperature(0.3)
-
+  temperature = 0.3
   max_retries = 3
+
+  unless QUIET
+    warn "[#{id}] model=#{ROLES_MODEL} temp=#{temperature} prompt=#{user_prompt.size} chars"
+  end
+
+  chat = RubyLLM.chat(
+    model: ROLES_MODEL,
+    provider: :anthropic,
+    assume_model_exists: true
+  ).with_instructions(system_prompt)
+    .with_temperature(temperature)
   attempts = 0
   valid_roles = nil
   last_error = nil
@@ -95,20 +121,23 @@ EXTRACT_ROLES = ->(opis_path, prompt_path, participants_path, target_path) {
   while attempts < max_retries && !valid_roles
     attempts += 1
     begin
-      # 4. Drop the `with: opis_path` parameter entirely.
-      # The file content is now safely baked into the UTF-8 user_prompt string.
+      t0 = Time.now
       msg = if attempts == 1
+        warn "[#{id}] Submitting to LLM (attempt 1/#{max_retries})..." unless QUIET
         chat.ask(user_prompt)
       else
-        warn "[WARN] #{id}: Retry #{attempts}/#{max_retries} due to: #{last_error}"
+        warn "[#{id}] Retry #{attempts}/#{max_retries} — #{last_error}" unless QUIET
         chat.ask("Your previous response failed schema validation: #{last_error}. Please correct your output and return ONLY the valid JSON array.")
       end
+      elapsed = (Time.now - t0).round(1)
 
-      # Keep the boundary sanitization on the way back down
-      parsed_json = JSON.parse(msg.content.dup.force_encoding("UTF-8"))
+      raw = msg.content.dup.force_encoding("UTF-8")
+      warn "[#{id}] Response received (#{elapsed}s, #{raw.size} chars). Validating..." unless QUIET
+      parsed_json = JSON.parse(strip_json_fences(raw))
       valid_roles = VALIDATE_ROLES.call(parsed_json)
     rescue JSON::ParserError, RuntimeError => e
       last_error = e.message
+      warn "[#{id}] Validation failed: #{last_error}" unless QUIET
     end
   end
 
