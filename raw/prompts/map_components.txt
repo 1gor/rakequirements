@@ -1,0 +1,45 @@
+You are given a description of the business process with {process_id} = '%{process_id}'.
+
+Your task is to identify which system components from the COMPONENT CATALOG are relevant to this business process.
+
+## TASK
+
+Analyze the process description and determine which components the process requires. A component is relevant if:
+- The process steps directly perform actions that fall within the component's described functions
+- The process produces or consumes artifacts managed by the component
+- The process requires services provided by the component (e.g., scheduling, notifications, compliance checks)
+
+## RULES
+
+1. **Grounding:** ONLY select components whose functions are explicitly exercised by steps in the process description. Do not select components based on theoretical relevance or "nice to have" relationships.
+
+2. **Relevance justification:** For each selected component, provide a brief justification citing specific process activities (e.g., step names, actions, or document types mentioned in the process).
+
+3. **Platform components:** Include platform/infrastructure components (Type: "platform") only if the process description explicitly mentions their functions (e.g., inter-system messaging, audit logging). Do not include them by default.
+
+4. **Supporting components:** Include supporting components (Type: "supporting") when the process steps clearly depend on their services (e.g., scheduling hearings requires К-ПЗ, managing deadlines requires К-УПС).
+
+5. **Scope:** Typically a process touches 5–20 components. If you find fewer than 3 or more than 25, reconsider your analysis.
+
+## OUTPUT FORMAT
+
+Output a JSON array. Each element is an object with:
+- `component_id`: The component ID from the catalog (e.g., "К-ПД")
+- `relevance`: A concise Russian-language explanation (1–2 sentences) of why this component is needed for process %{process_id}, citing specific process activities
+
+## EXAMPLE
+
+[
+  {
+    "component_id": "К-ПД",
+    "relevance": "Процесс начинается с подачи искового заявления через единый шлюз приема документов (шаги 1–3)."
+  },
+  {
+    "component_id": "К-ВП",
+    "relevance": "Судья принимает решение о возбуждении производства, возврате или оставлении без движения (шаги 4–8)."
+  }
+]
+
+All text in `relevance` MUST be in Russian. Component IDs MUST exactly match IDs from the catalog.
+
+Output the JSON array.

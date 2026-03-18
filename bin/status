@@ -1,0 +1,116 @@
+#!/usr/bin/env ruby
+# bin/status — Show generation status across work/ba/ directories
+#
+# Usage:
+#   bin/status              # full dashboard
+#   bin/status --missing    # processes with any missing artifacts
+#   bin/status --errors     # processes with .err files (with reason)
+#   bin/status --empty      # processes with empty artifact files
+#   bin/status --warnings   # processes with .warn files (with reason)
+
+ROOT = File.expand_path("..", __dir__)
+WORK_BA = File.join(ROOT, "work/ba")
+
+ARTIFACTS = %w[_opis.md _processes.jsonl _roles.jsonl _components.jsonl _user_stories.jsonl]
+
+# Derive PROCESS_IDS the same way lib/sources.rb does, without requiring Rake
+process_ids = Dir.glob(File.join(ROOT, "raw/processes/**/*tobe*.docx"))
+  .map { |f| File.basename(f).split("_").first }
+  .group_by { |n| n[0] }
+  .values.flat_map { |v| v.sort }
+
+filter = ARGV.first
+
+totals = Hash.new(0)
+problems = []
+
+process_ids.each do |id|
+  dir = File.join(WORK_BA, id)
+  issues = []
+
+  ARTIFACTS.each do |suffix|
+    path = File.join(dir, "#{id}#{suffix}")
+    if !File.exist?(path)
+      issues << [:missing, suffix]
+      totals[:missing] += 1
+    elsif File.size(path) == 0
+      issues << [:empty, suffix]
+      totals[:empty] += 1
+    else
+      totals[:ok] += 1
+    end
+  end
+
+  Dir.glob(File.join(dir, "*.err")).each do |ef|
+    issues << [:error, ef]
+    totals[:errors] += 1
+  end
+
+  Dir.glob(File.join(dir, "*.warn")).each do |wf|
+    issues << [:warning, wf]
+    totals[:warnings] += 1
+  end
+
+  problems << [id, issues] unless issues.empty?
+end
+
+case filter
+when "--missing"
+  problems.each do |id, issues|
+    issues.select { |type, _| type == :missing }.each do |_, suffix|
+      puts "#{id}: MISSING #{suffix}"
+    end
+  end
+
+when "--empty"
+  problems.each do |id, issues|
+    issues.select { |type, _| type == :empty }.each do |_, suffix|
+      puts "#{id}: EMPTY #{suffix}"
+    end
+  end
+
+when "--errors"
+  problems.each do |id, issues|
+    issues.select { |type, _| type == :error }.each do |_, ef|
+      reason = File.read(ef).strip rescue "?"
+      puts "#{id} [#{File.basename(ef)}]: #{reason}"
+    end
+  end
+
+when "--warnings"
+  problems.each do |id, issues|
+    issues.select { |type, _| type == :warning }.each do |_, wf|
+      reason = File.read(wf).strip rescue "?"
+      puts "#{id} [#{File.basename(wf)}]: #{reason}"
+    end
+  end
+
+else
+  total_artifacts = process_ids.size * ARTIFACTS.size
+  puts "=== WORK/BA STATUS ==="
+  puts "Processes : #{process_ids.size} (from source docs)"
+  puts "Artifacts : #{totals[:ok]}/#{total_artifacts} ok  |  #{totals[:missing]} missing  |  #{totals[:empty]} empty  |  #{totals[:errors]} errors  |  #{totals[:warnings]} warnings"
+  puts ""
+
+  if problems.empty?
+    puts "All clean."
+  else
+    problems.each do |id, issues|
+      puts "#{id}:"
+      issues.each do |type, detail|
+        case type
+        when :missing then puts "  MISSING  #{detail}"
+        when :empty   then puts "  EMPTY    #{detail}"
+        when :error
+          reason = File.read(detail).strip rescue "?"
+          puts "  ERROR    #{File.basename(detail)}: #{reason}"
+        when :warning
+          reason = File.read(detail).strip rescue "?"
+          puts "  WARNING  #{File.basename(detail)}: #{reason}"
+        end
+      end
+    end
+    puts ""
+    puts "#{problems.size}/#{process_ids.size} processes with issues"
+  end
+end
