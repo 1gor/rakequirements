@@ -5,38 +5,44 @@ PROCESSES_DICT = "raw/data/processes.jsonl"
 # Pure lambda: Input files -> Transformation -> Output file
 EXTRACT_PROCESSES = ->(opis_path, dict_path, target_path) {
   id = target_path.match(%r{work/ba/([^/]+)/})[1]
+  err_file = "#{target_path}.err"
 
-  # 1. Load dependencies into memory
-  opis_content = File.read(opis_path)
-  lookup = KotUtils.load_processes_lookup(dict_path)
+  begin
+    # 1. Load dependencies into memory
+    opis_content = File.read(opis_path)
+    lookup = KotUtils.load_processes_lookup(dict_path)
 
-  main_process = lookup[id]
-  unless main_process
-    warn "[SKIP] Main process #{id} not found in dictionary"
-    return
-  end
-
-  # 2. Extract and match logic
-  related_ids = KotUtils.extract_process_codes(opis_content, exclude: id)
-
-  rows = [main_process.slice("process_id", "name", "description")]
-  related_ids.each do |rid|
-    if (related = lookup[rid])
-      rows << related.slice("process_id", "name", "description")
-    else
-      warn "[WARN] #{id}: Related process #{rid} found in #{id} but missing in dict"
+    main_process = lookup[id]
+    unless main_process
+      warn "[SKIP] #{id}: Not found in processes dictionary"
+      return
     end
-  end
 
-  # 3. Write to disk using the Atomic Write pattern.
-  # This guarantees a crashed process won't poison the build cache with a half-written file.
-  KotUtils.atomic_write(target_path) do |temp_file|
-    File.open(temp_file, "w") do |f|
-      rows.each { |row| f.puts(row.to_json) }
+    # 2. Extract and match logic
+    related_ids = KotUtils.extract_process_codes(opis_content, exclude: id)
+
+    rows = [main_process.slice("process_id", "name", "description")]
+    related_ids.each do |rid|
+      if (related = lookup[rid])
+        rows << related.slice("process_id", "name", "description")
+      else
+        warn "[WARN] #{id}: Related process #{rid} not found in dict"
+      end
     end
-  end
 
-  puts "[OK] #{target_path} (#{rows.size} processes)"
+    # 3. Atomic write
+    KotUtils.atomic_write(target_path) do |temp_file|
+      File.open(temp_file, "w") do |f|
+        rows.each { |row| f.puts(row.to_json) }
+      end
+    end
+
+    FileUtils.rm_f(err_file)
+    puts "[OK] #{target_path} (#{rows.size} processes)"
+  rescue => e
+    File.write(err_file, "#{e.class}: #{e.message}\n")
+    warn "[FAIL] #{id}: #{e.class}: #{e.message}"
+  end
 }
 
 # 1. PULL ARCHITECTURE: Define the target state

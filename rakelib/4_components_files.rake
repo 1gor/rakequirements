@@ -123,11 +123,22 @@ MAP_COMPONENTS = ->(opis_path, processes_path, prompt_path, components_path, tar
       valid_mappings = VALIDATE_COMPONENTS.call(parsed_json)
     rescue JSON::ParserError, RuntimeError => e
       last_error = e.message
+      last_error_class = e.class.name
       warn "[#{id}] Validation failed: #{last_error}" unless QUIET
+    rescue RubyLLM::Error => e
+      last_error = e.message
+      last_error_class = e.class.name
+      warn "[#{id}] LLM error (#{last_error_class}): #{last_error}" unless QUIET
     end
   end
 
-  raise "[FAIL] #{id}: Could not generate valid component mapping after #{max_retries} attempts. Last error: #{last_error}" unless valid_mappings
+  err_file = "#{target_path}.err"
+
+  unless valid_mappings
+    File.write(err_file, "#{last_error_class}: #{last_error}\n")
+    warn "[FAIL] #{id}: #{last_error_class}: #{last_error} (logged to #{err_file})"
+    return
+  end
 
   KotUtils.atomic_write(target_path) do |temp_file|
     File.open(temp_file, "w") do |f|
@@ -135,6 +146,7 @@ MAP_COMPONENTS = ->(opis_path, processes_path, prompt_path, components_path, tar
     end
   end
 
+  FileUtils.rm_f(err_file)
   puts "[OK] #{target_path} (#{valid_mappings.size} components mapped)"
 }
 

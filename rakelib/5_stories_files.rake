@@ -1,3 +1,5 @@
+require "set"
+
 STORIES_PROMPT_FILE = "raw/prompts/extract_user_stories.txt"
 STORIES_MODEL = ENV["STORIES_MODEL"] || "claude-sonnet-4-5"
 
@@ -9,6 +11,18 @@ COMPONENTS_CATALOG = File.foreach(COMPONENTS_FILE)
   }
   .freeze
 
+def jaccard(a, b)
+  sa = a.downcase.split.to_set
+  sb = b.downcase.split.to_set
+  (sa & sb).size.to_f / (sa | sb).size
+end
+
+def normalize_story_text(text)
+  text.downcase.gsub(/\s+/, " ").strip
+end
+
+# Returns [stories, similarity_warnings]
+# Raises on hard schema errors; similarity issues are returned as warnings.
 VALIDATE_STORIES = ->(parsed_json, id, valid_roles, valid_component_ids) {
   stories = parsed_json.is_a?(Array) ? parsed_json : parsed_json["stories"]
   raise "Expected a JSON array of user stories" unless stories.is_a?(Array)
@@ -69,7 +83,22 @@ VALIDATE_STORIES = ->(parsed_json, id, valid_roles, valid_component_ids) {
     end
   end
 
-  stories
+  # 6. Similarity detection (soft warning, not hard error)
+  similarity_warnings = []
+  stories.each_with_index do |a, i|
+    norm_a = normalize_story_text(a["want"])
+    stories.each_with_index do |b, j|
+      next if j <= i
+      norm_b = normalize_story_text(b["want"])
+      if norm_a == norm_b
+        similarity_warnings << "Identical 'want': '#{a["story_id"]}' (#{a["role"]}) and '#{b["story_id"]}' (#{b["role"]})"
+      elsif jaccard(a["want"], b["want"]) >= 0.75
+        similarity_warnings << "Similar 'want' (Jaccard>=0.75): '#{a["story_id"]}' (#{a["role"]}) and '#{b["story_id"]}' (#{b["role"]})"
+      end
+    end
+  end
+
+  [stories, similarity_warnings]
 }
 
 EXTRACT_STORIES = ->(opis_path, roles_path, components_map_path, prompt_path, target_path) {
@@ -119,7 +148,9 @@ EXTRACT_STORIES = ->(opis_path, roles_path, components_map_path, prompt_path, ta
 
   attempts = 0
   valid_stories = nil
+  similarity_warnings = []
   last_error = nil
+  last_error_class = nil
 
   while attempts < max_retries && !valid_stories
     attempts += 1
@@ -130,21 +161,42 @@ EXTRACT_STORIES = ->(opis_path, roles_path, components_map_path, prompt_path, ta
         chat.ask(user_prompt)
       else
         warn "[#{id}] Retry #{attempts}/#{max_retries} — #{last_error}" unless QUIET
-        chat.ask("Your previous response failed schema validation: #{last_error}. Please correct your output and return ONLY the valid JSON array.")
+        chat.ask("Your previous response failed validation: #{last_error}. Please correct your output and return ONLY the valid JSON array.")
       end
       elapsed = (Time.now - t0).round(1)
 
       raw = msg.content.dup.force_encoding("UTF-8")
       warn "[#{id}] Response received (#{elapsed}s, #{raw.size} chars). Validating..." unless QUIET
       parsed_json = JSON.parse(strip_json_fences(raw))
-      valid_stories = VALIDATE_STORIES.call(parsed_json, id, valid_roles, mapped_component_ids)
+      stories, warnings = VALIDATE_STORIES.call(parsed_json, id, valid_roles, mapped_component_ids)
+
+      if warnings.any? && attempts < max_retries
+        last_error = "Similar stories detected: #{warnings.first}"
+        last_error_class = "SimilarityWarning"
+        warn "[#{id}] #{last_error}" unless QUIET
+      else
+        valid_stories = stories
+        similarity_warnings = warnings
+      end
     rescue JSON::ParserError, RuntimeError => e
       last_error = e.message
+      last_error_class = e.class.name
       warn "[#{id}] Validation failed: #{last_error}" unless QUIET
+    rescue RubyLLM::Error => e
+      last_error = e.message
+      last_error_class = e.class.name
+      warn "[#{id}] LLM error (#{last_error_class}): #{last_error}" unless QUIET
     end
   end
 
-  raise "[FAIL] #{id}: Could not generate valid user stories after #{max_retries} attempts. Last error: #{last_error}" unless valid_stories
+  err_file = "#{target_path}.err"
+  warn_file = target_path.sub(/\.jsonl$/, ".warn")
+
+  unless valid_stories
+    File.write(err_file, "#{last_error_class}: #{last_error}\n")
+    warn "[FAIL] #{id}: #{last_error_class}: #{last_error} (logged to #{err_file})"
+    next
+  end
 
   KotUtils.atomic_write(target_path) do |temp_file|
     File.open(temp_file, "w") do |f|
@@ -152,7 +204,16 @@ EXTRACT_STORIES = ->(opis_path, roles_path, components_map_path, prompt_path, ta
     end
   end
 
-  puts "[OK] #{target_path} (#{valid_stories.size} user stories)"
+  FileUtils.rm_f(err_file)
+
+  if similarity_warnings.any?
+    File.write(warn_file, similarity_warnings.join("\n") + "\n")
+    warn "[WARN] #{id}: #{similarity_warnings.size} similar story pair(s) detected (logged to #{warn_file})" unless QUIET
+    puts "[OK] #{target_path} (#{valid_stories.size} user stories, #{similarity_warnings.size} warning(s))"
+  else
+    FileUtils.rm_f(warn_file)
+    puts "[OK] #{target_path} (#{valid_stories.size} user stories)"
+  end
 }
 
 # PULL ARCHITECTURE: Define the target state
