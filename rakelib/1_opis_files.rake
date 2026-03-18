@@ -29,15 +29,15 @@ PROCESS_MARKDOWN = ->(source, target) {
 }
 
 # 1. PULL ARCHITECTURE: Define the target state
-TARGET_MDS = PROCESS_IDS.map { |id| "work/#{id}/#{id}_opis.md" }
+TARGET_MDS = PROCESS_IDS.map { |id| "work/ba/#{id}/#{id}_opis.md" }
 
 desc "Build all OPIS markdown files"
 multitask opis_mds: TARGET_MDS
 
 # 2. THE RULE: Resolve the dependency and execute
-rule(%r{^work/([^/]+)/\1_opis\.md$} => [
+rule(%r{^work/ba/([^/]+)/\1_opis\.md$} => [
   proc do |t|
-    id = t.match(%r{work/([^/]+)/})[1]
+    id = t.match(%r{work/ba/([^/]+)/})[1]
     Sources.find_source_docx(id)
   end
 ]) do |t|

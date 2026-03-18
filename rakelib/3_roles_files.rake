@@ -61,7 +61,7 @@ VALIDATE_ROLES = ->(parsed_json) {
 }
 
 EXTRACT_ROLES = ->(opis_path, prompt_path, participants_path, target_path) {
-  id = target_path.match(%r{work/([^/]+)/})[1]
+  id = target_path.match(%r{work/ba/([^/]+)/})[1]
 
   # 1. Explicitly force UTF-8 on all our file reads
   user_prompt_template = File.read(prompt_path, encoding: "UTF-8")
@@ -124,16 +124,16 @@ EXTRACT_ROLES = ->(opis_path, prompt_path, participants_path, target_path) {
 }
 
 # PULL ARCHITECTURE: Define the target state
-TARGET_ROLES_JSONLS = PROCESS_IDS.map { |id| "work/#{id}/#{id}_roles.jsonl" }
+TARGET_ROLES_JSONLS = PROCESS_IDS.map { |id| "work/ba/#{id}/#{id}_roles.jsonl" }
 
 desc "Extract participant roles using LLM"
 multitask roles: TARGET_ROLES_JSONLS
 
 # 4. THE RULE: Maps target -> [opis.md, prompt.txt]
-rule(%r{^work/([^/]+)/\1_roles\.jsonl$} => [
+rule(%r{^work/ba/([^/]+)/\1_roles\.jsonl$} => [
   proc do |t|
-    id = t.match(%r{work/([^/]+)/})[1]
-    "work/#{id}/#{id}_opis.md"
+    id = t.match(%r{work/ba/([^/]+)/})[1]
+    "work/ba/#{id}/#{id}_opis.md"
   end,
   ROLES_PROMPT_FILE,
   PARTICIPANTS_FILE
