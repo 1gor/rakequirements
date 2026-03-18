@@ -31,11 +31,12 @@ If a role exists in the DEFINED ROLES but has NO corresponding steps in the proc
 
 ## USER STORY FORMAT
 
-- "Как [Персона], я хочу [Возможность], чтобы [Цель/Результат]"
+Each user story follows the pattern: "Как [Персона], я хочу [Возможность], чтобы [Цель/Результат]"
 
-[Персона] – Пользователь или роль. Определяет, для кого разрабатывается функциональность.
-[Возможность] – Описание потребности пользователя или как он работает сейчас.
-[Цель/Результат] – Описание ценности Возможности для Пользователя.
+The story is split into three structured fields:
+- `role` — [Персона] Пользователь или роль. Определяет, для кого разрабатывается функциональность.
+- `want` — [Возможность] Описание потребности пользователя или как он работает сейчас. Write as a verb phrase without "я хочу" prefix.
+- `in_order_to` — [Цель/Результат] Описание ценности Возможности для Пользователя. Write as a verb phrase without "чтобы" prefix.
 
 ## DERIVATION PROCESS
 
@@ -67,24 +68,24 @@ A story MUST have at least 1 component. Most stories link to 1–2 components. O
 
 When you encounter a process step with actor "Система", "Портал", "Авто", or similar automated actors:
 
-DO NOT create stories like:
-"Как Система, я хочу зарегистрировать документы..."
+DO NOT assign the story to a system role.
 
-INSTEAD, transform to human-beneficiary format:
-"Как Судья, я хочу чтобы поступившие документы были автоматически зарегистрированы..."
+INSTEAD, determine the human beneficiary and write the `want` field to reflect the automated action:
+- `role`: "Судья"
+- `want`: "чтобы поступившие документы были автоматически зарегистрированы в системе"
+- `in_order_to`: "ускорить обработку входящей корреспонденции"
 
 Process for handling System steps:
 
 1. Examine the step's business context in "Описание процесса (актор и описание)".
 2. Look at preceding and following steps to identify the human beneficiary.
 3. Use your knowledge of Russian arbitration courts to determine who benefits from system steps.
-4. Rephrase as: "Как [Human], я хочу чтобы [System Action automated], чтобы [Result]".
 
 ### 3. Language Rules
 
-- All user story content (`content` field) MUST be in Russian.
-- Use singular form when writing first-person stories (even if role name is plural).
-- IDs (`story_id`) MUST be in Latin format.
+- `want` and `in_order_to` fields MUST be in Russian.
+- Use singular form (even if role name is plural).
+- IDs (`story_id`, `role_id`) MUST be in Latin format.
 - Maintain formal legal terminology appropriate for court processes.
 
 ### 4. Traceability Rules
@@ -101,8 +102,9 @@ Output a JSON array of objects. Each object has:
 1. `story_id` – String, format "%{process_id}-US-XX" (zero-padded: 01, 02, 03...).
 2. `role_id` – Role identifier (MUST match role_id from DEFINED ROLES).
 3. `role` – Role name (MUST match role name from DEFINED ROLES).
-4. `content` – User story text in Russian, in the "Как [Role], я хочу ..." format.
-5. `component_ids` – Array of component IDs from RELEVANT COMPONENTS (e.g., ["К-ПД", "К-МД"]).
+4. `want` – What the user wants (Russian, verb phrase, no "я хочу" prefix).
+5. `in_order_to` – The business goal (Russian, verb phrase, no "чтобы" prefix).
+6. `component_ids` – Array of component IDs from RELEVANT COMPONENTS (e.g., ["К-ПД", "К-МД"]).
 
 ## EXAMPLE
 
@@ -111,21 +113,24 @@ Output a JSON array of objects. Each object has:
     "story_id": "KBP1-US-01",
     "role_id": "KBP1-R-01",
     "role": "Истец",
-    "content": "Как Истец, я хочу подать исковое заявление в электронном виде через единый шлюз подачи документов, чтобы инициировать судебное разбирательство без необходимости физической явки в канцелярию суда.",
+    "want": "подать исковое заявление в электронном виде через единый шлюз подачи документов",
+    "in_order_to": "инициировать судебное разбирательство без необходимости физической явки в канцелярию суда",
     "component_ids": ["К-ПД"]
   },
   {
     "story_id": "KBP1-US-02",
     "role_id": "KBP1-R-02",
     "role": "Сотрудник канцелярии",
-    "content": "Как Сотрудник канцелярии, я хочу зарегистрировать входящее исковое заявление и присвоить ему входящий номер, чтобы обеспечить надлежащий учет поступившей корреспонденции.",
+    "want": "зарегистрировать входящее исковое заявление и присвоить ему входящий номер",
+    "in_order_to": "обеспечить надлежащий учет поступившей корреспонденции",
     "component_ids": ["К-ПД", "К-ВДД"]
   },
   {
     "story_id": "KBP1-US-03",
     "role_id": "KBP1-R-03",
     "role": "Судья",
-    "content": "Как Судья, я хочу чтобы система автоматически проверила соответствие искового заявления формальным требованиям, чтобы ускорить принятие решения о возбуждении производства.",
+    "want": "чтобы система автоматически проверила соответствие искового заявления формальным требованиям",
+    "in_order_to": "ускорить принятие решения о возбуждении производства",
     "component_ids": ["К-ВП", "К-ПСР"]
   }
 ]

@@ -19,7 +19,7 @@ VALIDATE_STORIES = ->(parsed_json, id, valid_roles, valid_component_ids) {
 
   stories.each_with_index do |story, i|
     # 1. Required keys
-    %w[story_id role_id role content component_ids].each do |key|
+    %w[story_id role_id role want in_order_to component_ids].each do |key|
       raise "Missing '#{key}' at index #{i}" unless story.key?(key)
     end
 
@@ -43,22 +43,20 @@ VALIDATE_STORIES = ->(parsed_json, id, valid_roles, valid_component_ids) {
       raise "Role mismatch at index #{i}: role_id '#{rid}' expects role '#{expected_role}', got '#{story["role"]}'"
     end
 
-    # 4. Content checks
-    content = story["content"].to_s
+    # 4. Text field checks (want, in_order_to)
+    %w[want in_order_to].each do |field|
+      val = story[field].to_s
 
-    if content.match?(/\p{Han}/)
-      raise "Chinese characters in content at index #{i}: '#{content[0..80]}'"
+      if val.match?(/\p{Han}/)
+        raise "Chinese characters in '#{field}' at index #{i}: '#{val[0..80]}'"
+      end
+
+      if val.match?(/(?!\p{Cyrillic}|\p{Latin})\p{L}/)
+        raise "Invalid foreign characters in '#{field}' at index #{i}: '#{val[0..80]}'"
+      end
+
+      raise "'#{field}' too short at index #{i} — must be meaningful" if val.size < 10
     end
-
-    if content.match?(/(?!\p{Cyrillic}|\p{Latin})\p{L}/)
-      raise "Invalid foreign characters in content at index #{i}: '#{content[0..80]}'"
-    end
-
-    unless content.match?(/\AКак\s/)
-      raise "Content must start with 'Как ' at index #{i}: '#{content[0..40]}'"
-    end
-
-    raise "Content too short at index #{i} — must be a meaningful user story" if content.size < 30
 
     # 5. Component IDs validation
     cids = story["component_ids"]
