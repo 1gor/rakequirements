@@ -84,16 +84,19 @@ VALIDATE_STORIES = ->(parsed_json, id, valid_roles, valid_component_ids) {
   end
 
   # 6. Similarity detection (soft warning, not hard error)
+  # Compare want + in_order_to combined, since same action with different goals is valid
   similarity_warnings = []
   stories.each_with_index do |a, i|
-    norm_a = normalize_story_text(a["want"])
+    combined_a = "#{a["want"]} #{a["in_order_to"]}"
+    norm_a = normalize_story_text(combined_a)
     stories.each_with_index do |b, j|
       next if j <= i
-      norm_b = normalize_story_text(b["want"])
+      combined_b = "#{b["want"]} #{b["in_order_to"]}"
+      norm_b = normalize_story_text(combined_b)
       if norm_a == norm_b
-        similarity_warnings << "Identical 'want': '#{a["story_id"]}' (#{a["role"]}) and '#{b["story_id"]}' (#{b["role"]})"
-      elsif jaccard(a["want"], b["want"]) >= 0.75
-        similarity_warnings << "Similar 'want' (Jaccard>=0.75): '#{a["story_id"]}' (#{a["role"]}) and '#{b["story_id"]}' (#{b["role"]})"
+        similarity_warnings << "Identical story: '#{a["story_id"]}' (#{a["role"]}) and '#{b["story_id"]}' (#{b["role"]})"
+      elsif jaccard(combined_a, combined_b) >= 0.75
+        similarity_warnings << "Similar story (Jaccard>=0.75): '#{a["story_id"]}' (#{a["role"]}) and '#{b["story_id"]}' (#{b["role"]})"
       end
     end
   end
