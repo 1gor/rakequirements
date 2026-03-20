@@ -19,3 +19,13 @@ desc "Bar"
 task :source_docx, [:id] do |_, args|
   p Sources.find_source_docx(args[:id])
 end
+
+desc "Fix mtimes for a process directory (use after git checkout)"
+task :fix_mtime, [:id] do |_, args|
+  id = args[:id]
+  dir = "work/ba/#{id}"
+  # Touch in dependency order
+  sh "touch #{dir}/#{id}_opis.md"
+  sh "touch #{dir}/#{id}_roles.jsonl #{dir}/#{id}_components.jsonl #{dir}/#{id}_processes.jsonl"
+  sh "touch #{dir}/#{id}_user_stories.jsonl"
+end
