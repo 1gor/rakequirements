@@ -63,9 +63,19 @@ Each stage defines file rules: targets only rebuild when sources are newer.
 | 3 | `roles` | opis.md + extract_roles.txt + grouped_participants.json | `{id}_roles.jsonl` |
 | 4 | `components` | opis.md + processes.jsonl + map_components.txt + components.jsonl | `{id}_components.jsonl` |
 | 5 | `stories` | opis.md + roles.jsonl + components.jsonl + extract_user_stories.txt | `{id}_user_stories.jsonl` |
+| 8 | `review_components` | opis.md + user_stories.jsonl + components.jsonl (full catalog) | `{id}_components_review.jsonl` |
+| 8a | `apply_review` | components_review.jsonl | merges into `_components.jsonl` + `_user_stories.jsonl` |
 
-Run with: `rake stories` (builds all stages for all processes via dependencies).
-Parallel jobs: `rake -j 8 stories`. Default parallelism = 4.
+**Component-centric stages** (per component, output in `work/ta/`):
+
+| Stage | Task | Input | Output |
+|-------|------|-------|--------|
+| 6 | `projections` | aggregates.jsonl + all user_stories.jsonl | `work/ta/{cid}/{cid}_projections.jsonl` |
+| 7 | `map_processes` | aggregates.jsonl + processes.jsonl (full catalogue) | `work/ta/{cid}/{cid}_processes.jsonl` |
+
+See `README.md` for recommended execution order and full pipeline description.
+
+Default parallelism = 4 (override with `rake -j 8`).
 
 **Note**: CSV extraction tasks in rakelib are deprecated — the pipeline now feeds the full `_opis.md` document to the LLM instead of extracted CSV tables.
 
@@ -77,7 +87,7 @@ Parallel jobs: `rake -j 8 stories`. Default parallelism = 4.
 - Auth: `Bearer` token (not `x-api-key`). Patch applied in rake files.
 - API base: `https://api.z.ai/api/anthropic`
 - Env var: `Z_API_KEY`
-- Default model: `claude-sonnet-4-5` (overridable per stage via env: `ROLES_MODEL`, `COMPONENTS_MODEL`, `STORIES_MODEL`)
+- Default model: `claude-sonnet-4-5` (overridable per stage via env)
 - All LLM tasks retry up to 3 times with schema validation feedback on failure.
 
 ---
