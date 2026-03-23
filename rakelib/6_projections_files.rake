@@ -1,5 +1,6 @@
 require "ruby_llm"
 require "json"
+require "set"
 require "kot_utils"
 
 QUIET = %w[1 true yes].include?(ENV["QUIET"]&.downcase) unless defined?(QUIET)
@@ -86,19 +87,42 @@ EXTRACT_PROJECTIONS = ->(cid, aggregates_path, prompt_path, target_path) {
     }
   }
 
-  if relevant_stories.empty?
-    warn "[SKIP] #{cid}: No user stories reference this component"
-    return
-  end
-
   user_prompt_template = File.read(prompt_path, encoding: "UTF-8")
   aggregates_content = File.read(aggregates_path, encoding: "UTF-8")
 
   user_prompt = user_prompt_template % {component_id: cid}
   user_prompt += "\n\n### ОПИСАНИЕ КОМПОНЕНТА:\n#{component_entry.to_json}"
   user_prompt += "\n\n### ДОМЕННАЯ МОДЕЛЬ (АГРЕГАТЫ):\n#{aggregates_content}"
-  user_prompt += "\n\n### ПОЛЬЗОВАТЕЛЬСКИЕ ИСТОРИИ (#{relevant_stories.size} шт.):\n"
-  user_prompt += relevant_stories.map(&:to_json).join("\n")
+
+  context_label = nil
+
+  if relevant_stories.any?
+    user_prompt += "\n\n### ПОЛЬЗОВАТЕЛЬСКИЕ ИСТОРИИ (#{relevant_stories.size} шт.):\n"
+    user_prompt += relevant_stories.map(&:to_json).join("\n")
+    context_label = "stories=#{relevant_stories.size}"
+  else
+    # Fallback: use reverse-mapped process descriptions when no user stories exist
+    reverse_map_file = "work/ta/#{cid}/#{cid}_processes.jsonl"
+    unless File.exist?(reverse_map_file)
+      warn "[SKIP] #{cid}: No user stories and no reverse process map — run 'rake map_processes[#{cid}]' first"
+      return
+    end
+    mapped_processes = File.foreach(reverse_map_file).map { |line| JSON.parse(line) }
+    if mapped_processes.empty?
+      warn "[SKIP] #{cid}: No user stories and reverse map is empty (infrastructure component)"
+      return
+    end
+    process_lookup = File.foreach(PROCESSES_DICT)
+      .each_with_object({}) { |line, h| p = JSON.parse(line); h[p["process_id"]] = p }
+    process_context = mapped_processes.filter_map { |m|
+      process_lookup[m["process_id"]]
+        &.slice("process_id", "name", "description")
+        &.merge("relevance" => m["relevance"])
+    }
+    user_prompt += "\n\n### СВЯЗАННЫЕ ПРОЦЕССЫ (нет пользовательских историй; используются описания процессов):\n"
+    user_prompt += process_context.map(&:to_json).join("\n")
+    context_label = "fallback_processes=#{process_context.size}"
+  end
 
   system_prompt = %(
     You are an experienced domain-driven design practitioner and system architect with deep knowledge of Russian Arbitration Court processes. You write in fluent and correct technical Russian only, except for technical terms.
@@ -108,7 +132,7 @@ EXTRACT_PROJECTIONS = ->(cid, aggregates_path, prompt_path, target_path) {
   max_retries = 3
 
   unless QUIET
-    warn "[#{cid}] model=#{PROJECTIONS_MODEL} temp=#{temperature} stories=#{relevant_stories.size} prompt=#{user_prompt.size} chars"
+    warn "[#{cid}] model=#{PROJECTIONS_MODEL} temp=#{temperature} #{context_label} prompt=#{user_prompt.size} chars"
   end
 
   chat = RubyLLM.chat(
@@ -202,4 +226,29 @@ rule(%r{^work/ta/([^/]+)/\1_projections\.jsonl$} => [
   prompt_file = t.prerequisites[1]
 
   EXTRACT_PROJECTIONS.call(cid, aggregates_file, prompt_file, t.name)
+end
+
+desc "List components never referenced in any user story -> work/ta/orphaned-components.jsonl"
+task :orphaned_components do
+  referenced = FileList["work/ba/**/*_user_stories.jsonl"].each_with_object(Set.new) { |f, s|
+    next unless File.exist?(f)
+    File.foreach(f) { |line| JSON.parse(line)["component_ids"].each { |cid| s << cid } }
+  }
+
+  orphaned = VALID_COMPONENT_IDS.reject { |cid| referenced.include?(cid) }
+
+  target = "work/ta/orphaned-components.jsonl"
+  File.open(target, "w") do |f|
+    orphaned.each do |cid|
+      comp = COMPONENTS_CATALOG[cid]
+      f.puts({
+        component_id: cid,
+        name: comp&.dig("Наименование компонента"),
+        description: comp&.dig("Описание реализуемых функций")
+      }.to_json)
+    end
+  end
+
+  puts "[OK] #{target} (#{orphaned.size} orphaned out of #{VALID_COMPONENT_IDS.size} components)"
+  orphaned.each { |cid| puts "  #{cid}" }
 end
