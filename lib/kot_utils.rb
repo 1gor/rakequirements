@@ -1,5 +1,4 @@
 # lib/kot_utils.rb
-require "docx"
 require "csv"
 require "fileutils"
 require "open3"
