@@ -75,7 +75,7 @@ Each stage defines file rules: targets only rebuild when sources are newer.
 
 See `README.md` for recommended execution order and full pipeline description.
 
-Default parallelism = 4 (override with `rake -j 8`).
+Default concurrency = 4 threads (`RAKE_JOBS` in `Rakefile`), reserving 1 slot from the Z.ai 5-request subscription limit. Override: `RAKE_JOBS=N` or `rake -j N`.
 
 **Note**: CSV extraction tasks in rakelib are deprecated — the pipeline now feeds the full `_opis.md` document to the LLM instead of extracted CSV tables.
 

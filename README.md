@@ -40,20 +40,22 @@ The pipeline follows a Rake **pull model**: each stage defines file rules where 
 
 ## Recommended execution order
 
+Default concurrency is **4** (set via `RAKE_JOBS` env var in `Rakefile`), reserving one slot from the Z.ai 5-concurrent-request limit for management/introspection. Override with `RAKE_JOBS=N` or `rake -j N`.
+
 ```bash
 # Full forward pipeline (stages 1-5)
 rake opis_mds
-rake -j 8 roles           # stages 2-3 run via dependencies
-rake -j 8 components      # stage 4
-rake -j 8 stories         # stage 5
+rake roles                 # stages 2-3 run via dependencies
+rake components            # stage 4
+rake stories               # stage 5
 
 # Quality review pass (stage 8)
-rake -j 8 review_components
+rake review_components
 rake apply_review          # merges findings into stages 4+5 outputs
 
 # Component-centric analysis (stages 6-7)
-rake -j 8 map_processes    # stage 7 (reverse mapping)
-rake -j 8 projections      # stage 6 (uses stories; falls back to stage 7 for orphans)
+rake map_processes         # stage 7 (reverse mapping)
+rake projections           # stage 6 (uses stories; falls back to stage 7 for orphans)
 ```
 
 After `apply_review`, re-running `rake stories` will regenerate user stories for any process whose component list was expanded.
