@@ -8,7 +8,6 @@ require "kot_utils"
 namespace :spell do
   PERSONAL_DICT = "raw/data/spell_personal.dic"
   HUNSPELL_LANG = ENV.fetch("HUNSPELL_LANG", "ru_RU")
-  SPELL_FIELDS = %w[want in_order_to].freeze
 
   # Persistent hunspell pipe — spawning it per call was the bottleneck.
   class HunspellPipe
@@ -58,9 +57,9 @@ namespace :spell do
     File.open(PERSONAL_DICT, "a") { |f| f.puts(word) }
   end
 
-  def self.prompt(story_id, field, text, miss)
+  def self.prompt(record_id, field, text, miss)
     puts
-    puts "  story:  #{story_id}  (#{field})"
+    puts "  id:     #{record_id}  (#{field})"
     puts "  text:   #{highlight(text, miss[:offset], miss[:word])}"
     puts "  word:   \e[1;31m#{miss[:word]}\e[0m"
     if miss[:suggestions].empty?
@@ -104,16 +103,14 @@ namespace :spell do
     text[0, offset] + replacement + text[offset + word.length..]
   end
 
-  desc "Interactively spellcheck want/in_order_to in user_stories.jsonl files. " \
-       "Pass a prefix to filter, e.g. rake 'spell:stories[TBP]' or 'spell:stories[TBP7_]'."
-  task :stories, [:prefix] do |_, args|
-    prefix = args[:prefix].to_s
-    files = Dir.glob("work/ba/**/*_user_stories.jsonl").sort
+  # Core driver shared by every spell:* task.
+  def self.run_spellcheck(glob:, fields:, id_key:, prefix:)
+    files = Dir.glob(glob).sort
     files.select! { |f| File.basename(f).start_with?(prefix) } unless prefix.empty?
 
     if files.empty?
       puts "no files match prefix #{prefix.inspect}"
-      next
+      return
     end
 
     puts "spellchecking #{files.size} file(s)#{prefix.empty? ? "" : " (prefix: #{prefix})"}"
@@ -126,8 +123,7 @@ namespace :spell do
       files.each_with_index do |path, fi|
         break if quit
         folder = File.basename(File.dirname(path))
-        prefix_str = "[#{fi + 1}/#{files.size}] #{folder}"
-        print "#{prefix_str} ... "
+        print "[#{fi + 1}/#{files.size}] #{folder} ... "
         $stdout.flush
 
         lines = File.readlines(path, chomp: true)
@@ -137,12 +133,12 @@ namespace :spell do
         lines.each_with_index do |line, i|
           break if quit
           next if line.strip.empty?
-          story = JSON.parse(line)
-          story_changed = false
+          record = JSON.parse(line)
+          record_changed = false
 
-          SPELL_FIELDS.each do |field|
+          fields.each do |field|
             break if quit
-            val = story[field]
+            val = record[field]
             next if val.nil? || val.empty?
             original_val = val
 
@@ -152,7 +148,7 @@ namespace :spell do
 
               if (auto = misses.find { |m| session_decisions[m[:word]].is_a?(String) })
                 val = replace_at(val, auto[:offset], auto[:word], session_decisions[auto[:word]])
-                story_changed = true
+                record_changed = true
                 next
               end
 
@@ -160,12 +156,12 @@ namespace :spell do
               break unless miss
 
               if flagged.zero?
-                puts  # break the "..." line so prompts read cleanly
+                puts
                 puts "[#{path}]"
               end
               flagged += 1
 
-              action = prompt(story["story_id"], field, val, miss)
+              action = prompt(record[id_key], field, val, miss)
               case action.first
               when :quit
                 quit = true
@@ -178,15 +174,15 @@ namespace :spell do
                 replacement = action[1]
                 val = replace_at(val, miss[:offset], miss[:word], replacement)
                 session_decisions[miss[:word]] = replacement
-                story_changed = true
+                record_changed = true
               end
             end
 
-            story[field] = val if val != original_val
+            record[field] = val if val != original_val
           end
 
-          if story_changed
-            lines[i] = JSON.generate(story)
+          if record_changed
+            lines[i] = JSON.generate(record)
             changed = true
           end
         end
@@ -205,5 +201,27 @@ namespace :spell do
     end
 
     puts quit ? "stopped." : "done."
+  end
+
+  desc "Interactively spellcheck want/in_order_to in user_stories.jsonl files. " \
+       "Pass a prefix to filter, e.g. rake 'spell:stories[TBP]' or 'spell:stories[TBP7_]'."
+  task :stories, [:prefix] do |_, args|
+    run_spellcheck(
+      glob: "work/ba/**/*_user_stories.jsonl",
+      fields: %w[want in_order_to],
+      id_key: "story_id",
+      prefix: args[:prefix].to_s
+    )
+  end
+
+  desc "Interactively spellcheck description in roles.jsonl files. " \
+       "Pass a prefix to filter, e.g. rake 'spell:roles[TBP69_]'."
+  task :roles, [:prefix] do |_, args|
+    run_spellcheck(
+      glob: "work/ba/**/*_roles.jsonl",
+      fields: %w[description],
+      id_key: "role_id",
+      prefix: args[:prefix].to_s
+    )
   end
 end
