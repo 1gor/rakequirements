@@ -10,30 +10,40 @@ namespace :spell do
   HUNSPELL_LANG = ENV.fetch("HUNSPELL_LANG", "ru_RU")
   SPELL_FIELDS = %w[want in_order_to].freeze
 
-  # Run hunspell on a single line; returns array of {word:, offset:, suggestions:[]}
-  def self.spell_misspellings(text)
-    return [] if text.nil? || text.strip.empty?
-
-    cmd = ["hunspell", "-d", HUNSPELL_LANG, "-i", "utf-8", "-a"]
-    cmd += ["-p", File.expand_path(PERSONAL_DICT)] if File.exist?(PERSONAL_DICT)
-
-    # `-a` (ispell pipe mode) — prefix with `^` so leading punctuation doesn't break parsing.
-    input = "^#{text.tr("\n", " ")}\n"
-    out, _err, _st = Open3.capture3(*cmd, stdin_data: input)
-
-    misses = []
-    out.each_line do |line|
-      line = line.chomp
-      case line
-      when /\A& (\S+) \d+ (\d+): (.+)\z/
-        word, offset, sugs = $1, $2.to_i, $3
-        # offset in `-a` pipe mode is 1-based because of the `^` prefix; subtract 1.
-        misses << {word: word, offset: offset - 1, suggestions: sugs.split(", ")}
-      when /\A# (\S+) (\d+)\z/
-        misses << {word: $1, offset: $2.to_i - 1, suggestions: []}
-      end
+  # Persistent hunspell pipe — spawning it per call was the bottleneck.
+  class HunspellPipe
+    def initialize(lang:, personal_dict: nil)
+      cmd = ["hunspell", "-d", lang, "-i", "utf-8", "-a"]
+      cmd += ["-p", File.expand_path(personal_dict)] if personal_dict && File.exist?(personal_dict)
+      @stdin, @stdout, @wait = Open3.popen2(*cmd)
+      @stdout.gets  # consume banner
     end
-    misses
+
+    # Returns array of {word:, offset:, suggestions:[]} for one input line.
+    def check(text)
+      return [] if text.nil? || text.strip.empty?
+      @stdin.puts("^#{text.tr("\n", " ")}")
+      @stdin.flush
+
+      misses = []
+      while (line = @stdout.gets)
+        line = line.chomp
+        break if line.empty?
+        case line
+        when /\A& (\S+) \d+ (\d+): (.+)\z/
+          misses << {word: $1, offset: $2.to_i - 1, suggestions: $3.split(", ")}
+        when /\A# (\S+) (\d+)\z/
+          misses << {word: $1, offset: $2.to_i - 1, suggestions: []}
+        end
+      end
+      misses
+    end
+
+    def close
+      @stdin.close rescue nil
+      @stdout.close rescue nil
+      Process.wait(@wait.pid) rescue nil
+    end
   end
 
   def self.highlight(text, offset, word)
@@ -48,8 +58,6 @@ namespace :spell do
     File.open(PERSONAL_DICT, "a") { |f| f.puts(word) }
   end
 
-  # Prompt user; returns one of:
-  #   [:replace, "new_word"]  | [:skip] | [:add] | [:quit]
   def self.prompt(story_id, field, text, miss)
     puts
     puts "  story:  #{story_id}  (#{field})"
@@ -92,84 +100,108 @@ namespace :spell do
     end
   end
 
-  # Replace word at offset; returns [new_text, delta_in_length]
   def self.replace_at(text, offset, word, replacement)
-    [text[0, offset] + replacement + text[offset + word.length..], replacement.length - word.length]
+    text[0, offset] + replacement + text[offset + word.length..]
   end
 
-  desc "Interactively spellcheck want/in_order_to in all user_stories.jsonl files"
-  task :stories do
+  desc "Interactively spellcheck want/in_order_to in user_stories.jsonl files. " \
+       "Pass a prefix to filter, e.g. rake 'spell:stories[TBP]' or 'spell:stories[TBP7_]'."
+  task :stories, [:prefix] do |_, args|
+    prefix = args[:prefix].to_s
     files = Dir.glob("work/ba/**/*_user_stories.jsonl").sort
-    session_decisions = {}  # word => :skip | :add | replacement
+    files.select! { |f| File.basename(f).start_with?(prefix) } unless prefix.empty?
+
+    if files.empty?
+      puts "no files match prefix #{prefix.inspect}"
+      next
+    end
+
+    puts "spellchecking #{files.size} file(s)#{prefix.empty? ? "" : " (prefix: #{prefix})"}"
+    puts "starting hunspell (#{HUNSPELL_LANG})..."
+    pipe = HunspellPipe.new(lang: HUNSPELL_LANG, personal_dict: PERSONAL_DICT)
+    session_decisions = {}
     quit = false
 
-    files.each do |path|
-      break if quit
-      lines = File.readlines(path, chomp: true)
-      changed = false
-
-      lines.each_with_index do |line, i|
+    begin
+      files.each_with_index do |path, fi|
         break if quit
-        next if line.strip.empty?
-        story = JSON.parse(line)
-        story_changed = false
+        folder = File.basename(File.dirname(path))
+        prefix_str = "[#{fi + 1}/#{files.size}] #{folder}"
+        print "#{prefix_str} ... "
+        $stdout.flush
 
-        SPELL_FIELDS.each do |field|
+        lines = File.readlines(path, chomp: true)
+        changed = false
+        flagged = 0
+
+        lines.each_with_index do |line, i|
           break if quit
-          val = story[field]
-          next if val.nil? || val.empty?
-          original_val = val
+          next if line.strip.empty?
+          story = JSON.parse(line)
+          story_changed = false
 
-          # Loop because replacements shift offsets — easiest is rescan after each edit.
-          loop do
-            misses = spell_misspellings(val)
-            # Drop any whose word matches a session "skip" / "add" decision.
-            misses.reject! { |m| session_decisions[m[:word]] == :skip || session_decisions[m[:word]] == :add }
+          SPELL_FIELDS.each do |field|
+            break if quit
+            val = story[field]
+            next if val.nil? || val.empty?
+            original_val = val
 
-            # Apply auto-replacements for words decided earlier this session.
-            auto = misses.find { |m| session_decisions[m[:word]].is_a?(String) }
-            if auto
-              val, _ = replace_at(val, auto[:offset], auto[:word], session_decisions[auto[:word]])
-              story_changed = true
-              next
+            loop do
+              misses = pipe.check(val)
+              misses.reject! { |m| %i[skip add].include?(session_decisions[m[:word]]) }
+
+              if (auto = misses.find { |m| session_decisions[m[:word]].is_a?(String) })
+                val = replace_at(val, auto[:offset], auto[:word], session_decisions[auto[:word]])
+                story_changed = true
+                next
+              end
+
+              miss = misses.first
+              break unless miss
+
+              if flagged.zero?
+                puts  # break the "..." line so prompts read cleanly
+                puts "[#{path}]"
+              end
+              flagged += 1
+
+              action = prompt(story["story_id"], field, val, miss)
+              case action.first
+              when :quit
+                quit = true
+                break
+              when :skip
+                session_decisions[miss[:word]] = :skip
+              when :add
+                session_decisions[miss[:word]] = :add
+              when :replace
+                replacement = action[1]
+                val = replace_at(val, miss[:offset], miss[:word], replacement)
+                session_decisions[miss[:word]] = replacement
+                story_changed = true
+              end
             end
 
-            miss = misses.first
-            break unless miss
-
-            puts "\n[#{path}]"
-            action = prompt(story["story_id"], field, val, miss)
-            case action.first
-            when :quit
-              quit = true
-              break
-            when :skip
-              session_decisions[miss[:word]] = :skip
-            when :add
-              session_decisions[miss[:word]] = :add
-            when :replace
-              replacement = action[1]
-              val, _ = replace_at(val, miss[:offset], miss[:word], replacement)
-              session_decisions[miss[:word]] = replacement
-              story_changed = true
-            end
+            story[field] = val if val != original_val
           end
 
-          story[field] = val if val != original_val
+          if story_changed
+            lines[i] = JSON.generate(story)
+            changed = true
+          end
         end
 
-        if story_changed
-          lines[i] = JSON.generate(story)
-          changed = true
+        if changed
+          KotUtils.atomic_write(path) do |tmp|
+            File.open(tmp, "w") { |f| lines.each { |l| f.puts(l) } }
+          end
+          puts "wrote (#{flagged} flagged)"
+        else
+          puts flagged.zero? ? "clean" : "no changes (#{flagged} flagged)"
         end
       end
-
-      if changed
-        KotUtils.atomic_write(path) do |tmp|
-          File.open(tmp, "w") { |f| lines.each { |l| f.puts(l) } }
-        end
-        puts "  wrote #{path}"
-      end
+    ensure
+      pipe.close
     end
 
     puts quit ? "stopped." : "done."
