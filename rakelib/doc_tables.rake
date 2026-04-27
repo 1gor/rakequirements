@@ -123,17 +123,18 @@ namespace :doc do
       doc.h3 "Реестр пользовательских историй с описанием компонентов"
       doc.p
 
-      rows = [DocHelpers.header_row(["Код пользовательской истории", "Я как", "Хочу", "Чтобы", "Код компонента"])]
+      rows = [DocHelpers.header_row(["Код пользовательской истории", "Код роли", "Я как", "Хочу", "Чтобы", "Код компонента"])]
       current_prefix = nil
       sorted_pids.each do |pid|
         prefix = pid[0]
         if prefix != current_prefix
           current_prefix = prefix
-          rows << DocHelpers.section_header_row(DocHelpers::PROCESS_TYPE_NAMES[prefix], 5)
+          rows << DocHelpers.section_header_row(DocHelpers::PROCESS_TYPE_NAMES[prefix], 6)
         end
         all_stories.select { |id, _| id == pid }.each do |_, story|
           rows << [
             story["story_id"],
+            story["role_id"],
             story["role"],
             story["want"],
             story["in_order_to"],
