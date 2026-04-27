@@ -379,16 +379,29 @@ namespace :doc do
     DocHelpers.ensure_output_dir
     comps = DocHelpers.load_components
     projections = DocHelpers.load_all_jsonl("work/ta/**/*_projections.jsonl")
+    aggregates = DocHelpers.load_all_jsonl("work/ta/**/*_aggregates.jsonl")
+
+    entries = []
+    aggregates.each do |cid, agg|
+      full = agg["Name"].to_s
+      latin = full[/\A([A-Za-z][A-Za-z0-9]*)/, 1]
+      gloss = full[/\(([^)]+)\)\s*\z/, 1]
+      name = (gloss && latin) ? "#{gloss} (#{latin})" : full
+      entries << [cid, "#{cid}-AG-01", name]
+    end
+    projections.each do |cid, proj|
+      entries << [cid, proj["projection_id"], proj["name"]]
+    end
+    entries.sort_by! { |cid, code, _| [cid, code] }
 
     Caracal::Document.save("out/tables/matrica_komponent_info.docx") do |doc|
       doc.h3 "Матрица «Компонент/информационный объект»"
       doc.p
 
       rows = [DocHelpers.header_row(["Код матрицы", "Компонент", "Код компонента", "Информационный объект", "Код информационного объекта"])]
-      sorted = projections.sort_by { |cid, proj| [cid, proj["projection_id"]] }
-      sorted.each_with_index do |(cid, proj), i|
+      entries.each_with_index do |(cid, code, name), i|
         cname = comps.dig(cid, "Наименование компонента") || cid
-        rows << ["М5.%03d" % (i + 1), cname, cid, proj["name"], proj["projection_id"]]
+        rows << ["М5.%03d" % (i + 1), cname, cid, name, code]
       end
 
       doc.table rows, &DocHelpers::TABLE_STYLE
