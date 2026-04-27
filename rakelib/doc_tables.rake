@@ -8,7 +8,8 @@ namespace :doc do
   desc "Generate all document tables"
   task all: %i[participants roles participant_role_matrix user_stories processes
                process_story_matrix components component_participant_matrix
-               info_objects component_info_matrix story_component_matrix
+               info_object_projections info_object_aggregates
+               component_info_matrix story_component_matrix
                component_tech_matrix]
 
   # ---------------------------------------------------------------------------
@@ -297,10 +298,10 @@ namespace :doc do
   end
 
   # ---------------------------------------------------------------------------
-  # Р9. Реестр информационных объектов
+  # Р9.1 Реестр информационных объектов (справочники)
   # ---------------------------------------------------------------------------
-  desc "Р9. Реестр информационных объектов"
-  task :info_objects do
+  desc "Р9.1 Реестр информационных объектов (справочники)"
+  task :info_object_projections do
     DocHelpers.ensure_output_dir
     comps = DocHelpers.load_components
     projections = DocHelpers.load_all_jsonl("work/ta/**/*_projections.jsonl")
@@ -311,11 +312,11 @@ namespace :doc do
       by_component[cid] << proj
     end
 
-    Caracal::Document.save("out/tables/reestr_info_objektov.docx") do |doc|
-      doc.h3 "Реестр информационных объектов (объекты и справочники)"
+    Caracal::Document.save("out/tables/reestr_info_objektov_spravochniki.docx") do |doc|
+      doc.h3 "Реестр информационных объектов (справочники)"
       doc.p
 
-      rows = [DocHelpers.header_row(["Код информационного объекта", "Наименование информационного объекта", "Описание"])]
+      rows = [DocHelpers.header_row(["Код справочника", "Наименование справочника", "Описание"])]
       by_component.keys.sort.each do |cid|
         cname = comps.dig(cid, "Наименование компонента") || cid
         rows << DocHelpers.section_header_row(cname, 3)
@@ -326,7 +327,48 @@ namespace :doc do
 
       doc.table rows, &DocHelpers::TABLE_STYLE
     end
-    puts "  wrote out/tables/reestr_info_objektov.docx"
+    puts "  wrote out/tables/reestr_info_objektov_spravochniki.docx"
+  end
+
+  # ---------------------------------------------------------------------------
+  # Р9.2 Реестр информационных объектов (объекты)
+  # ---------------------------------------------------------------------------
+  desc "Р9.2 Реестр информационных объектов (объекты)"
+  task :info_object_aggregates do
+    DocHelpers.ensure_output_dir
+    aggregates = DocHelpers.load_all_jsonl("work/ta/**/*_aggregates.jsonl")
+
+    Caracal::Document.save("out/tables/reestr_info_objektov_obyekty.docx") do |doc|
+      doc.h3 "Реестр информационных объектов (объекты)"
+      doc.p
+
+      rows = [DocHelpers.header_row(["Код объекта", "Наименование объекта", "Описание"])]
+      aggregates.sort_by { |cid, _| cid }.each do |cid, agg|
+        code = "#{cid}-AG-01"
+        full = agg["Name"].to_s
+        latin = full[/\A([A-Za-z][A-Za-z0-9]*)/, 1]
+        gloss = full[/\(([^)]+)\)\s*\z/, 1]
+        name = if gloss && latin
+          "#{gloss} (#{latin})"
+        else
+          full
+        end
+        attrs = agg["Attributes"] || []
+        invs = agg["Invariants"] || []
+
+        desc_proc = proc do
+          p "Атрибуты"
+          ul { attrs.each { |a| li a } } unless attrs.empty?
+          p "Правила"
+          ul { invs.each { |i| li i } } unless invs.empty?
+        end
+
+        rows << [code, name, desc_proc]
+      end
+
+      doc.table rows, &DocHelpers::TABLE_STYLE
+    end
+    puts "  wrote out/tables/reestr_info_objektov_obyekty.docx"
   end
 
   # ---------------------------------------------------------------------------
