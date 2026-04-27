@@ -384,4 +384,26 @@ namespace :doc do
     end
     puts "  wrote out/tables/matrica_us_komponent.docx"
   end
+
+  # ---------------------------------------------------------------------------
+  # Матрица «Компонент/технология»
+  # ---------------------------------------------------------------------------
+  desc "Матрица «Компонент/технология»"
+  task :component_tech_matrix do
+    DocHelpers.ensure_output_dir
+    rows_data = File.foreach("work/ta/component-tech-mapping.jsonl").map { |l| JSON.parse(l) }
+
+    Caracal::Document.save("out/tables/matrica_komponent_tech.docx") do |doc|
+      doc.h3 "Матрица «Компонент/технология»"
+      doc.p
+
+      rows = [DocHelpers.header_row(["Код компонента", "Наименование компонента", "Технологии"])]
+      rows_data.each do |r|
+        rows << [r["component_id"], r["component_name"], (r["technologies"] || []).join(", ")]
+      end
+
+      doc.table rows, &DocHelpers::TABLE_STYLE
+    end
+    puts "  wrote out/tables/matrica_komponent_tech.docx"
+  end
 end
