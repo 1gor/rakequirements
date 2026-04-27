@@ -215,6 +215,14 @@ namespace :doc do
     DocHelpers.ensure_output_dir
     comps = DocHelpers.load_components
 
+    type_ru = {
+      "operational" => "операционный",
+      "legal" => "судебный",
+      "supporting" => "поддерживающий",
+      "platform" => "платформенный"
+    }
+    translate = ->(t) { type_ru[t] || t }
+
     # Group: parents first, then children immediately after
     parents = comps.values.reject { |c| c["parent_id"] }
     children_by_parent = comps.values.select { |c| c["parent_id"] }.group_by { |c| c["parent_id"] }
@@ -225,9 +233,9 @@ namespace :doc do
 
       rows = [DocHelpers.header_row(["Код компонента", "Наименование компонента", "Тип", "Реализуемые функции"])]
       parents.each do |c|
-        rows << [{content: c["ID"], bold: true}, {content: c["Наименование компонента"], bold: true}, c["Type"], c["Описание реализуемых функций"]]
+        rows << [{content: c["ID"], bold: true}, {content: c["Наименование компонента"], bold: true}, translate.call(c["Type"]), c["Описание реализуемых функций"]]
         (children_by_parent[c["ID"]] || []).each do |child|
-          rows << [child["ID"], child["Наименование компонента"], child["Type"], child["Описание реализуемых функций"]]
+          rows << [child["ID"], child["Наименование компонента"], translate.call(child["Type"]), child["Описание реализуемых функций"]]
         end
       end
 
