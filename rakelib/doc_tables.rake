@@ -8,7 +8,8 @@ namespace :doc do
   desc "Generate all document tables"
   task all: %i[participants roles participant_role_matrix user_stories processes
                process_story_matrix components component_participant_matrix
-               info_objects component_info_matrix story_component_matrix]
+               info_objects component_info_matrix story_component_matrix
+               component_tech_matrix]
 
   # ---------------------------------------------------------------------------
   # Р1. Реестр участников процессов
