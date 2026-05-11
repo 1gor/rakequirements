@@ -248,6 +248,39 @@ namespace :doc do
   end
 
   # ---------------------------------------------------------------------------
+  # Требования к функциям, выполняемым Системой
+  # ---------------------------------------------------------------------------
+  desc "Требования к функциям, выполняемым Системой"
+  task :system_features do
+    DocHelpers.ensure_output_dir
+    comps = DocHelpers.load_components
+
+    parents = comps.values.reject { |c| c["parent_id"] }
+    children_by_parent = comps.values.select { |c| c["parent_id"] }.group_by { |c| c["parent_id"] }
+
+    strip_name = ->(n) { n.to_s.sub(/\AКомпонент\s+/, "").gsub(/[«»"]/, "").strip }
+
+    ordered = []
+    parents.each do |c|
+      ordered << c
+      (children_by_parent[c["ID"]] || []).each { |child| ordered << child }
+    end
+
+    Caracal::Document.save("out/tables/trebovaniya_funkcii.docx") do |doc|
+      doc.h3 "Требования к функциям, выполняемым Системой"
+      doc.p
+
+      rows = [DocHelpers.header_row(["№ п/п", "Наименование компонента Системы", "Функции компонента Системы"])]
+      ordered.each_with_index do |c, i|
+        rows << [(i + 1).to_s, strip_name.call(c["Наименование компонента"]), c["Описание реализуемых функций"]]
+      end
+
+      doc.table rows, &DocHelpers::TABLE_STYLE
+    end
+    puts "  wrote out/tables/trebovaniya_funkcii.docx"
+  end
+
+  # ---------------------------------------------------------------------------
   # М4. Матрица «Компонент/участник процесса»
   # ---------------------------------------------------------------------------
   desc "М4. Матрица «Компонент/участник процесса»"
