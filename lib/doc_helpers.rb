@@ -71,9 +71,15 @@ module DocHelpers
     end
   end
 
-  # Build header row cells with grey background and bold
-  def header_row(headers)
-    headers.map { |h| {content: h, bold: true, background: "cccccc"} }
+  # Build header row cells with grey background and bold.
+  # widths (optional) is an array of twip widths per column; Caracal derives
+  # <w:tblGrid> from the first row's cell widths.
+  def header_row(headers, widths = nil)
+    headers.each_with_index.map do |h, i|
+      cell = {content: h, bold: true, background: "cccccc"}
+      cell[:width] = widths[i] if widths
+      cell
+    end
   end
 
   # Build a section header row (bold first cell, rest empty) spanning visual width

@@ -20,11 +20,11 @@ namespace :doc do
     DocHelpers.ensure_output_dir
     groups = JSON.parse(File.read("raw/data/grouped_participants.json"))
 
-    Caracal::Document.save("out/tables/reestr_uchastnikov.docx") do |doc|
+    Caracal::Document.save("out/tables/1_reestr_uchastnikov.docx") do |doc|
       doc.h3 "Реестр участников процессов"
       doc.p
 
-      rows = [DocHelpers.header_row(["Код участника", "Группа", "Участник процесса"])]
+      rows = [DocHelpers.header_row(["Код участника", "Группа", "Участник процесса"], [2160, 3060, 4140])]
       groups.each do |group|
         rows << DocHelpers.section_header_row(group["name"], 3)
         group["members"].each do |m|
@@ -34,7 +34,7 @@ namespace :doc do
 
       doc.table rows, &DocHelpers::TABLE_STYLE
     end
-    puts "  wrote out/tables/reestr_uchastnikov.docx"
+    puts "  wrote out/tables/1_reestr_uchastnikov.docx"
   end
 
   # ---------------------------------------------------------------------------
@@ -57,11 +57,11 @@ namespace :doc do
       end
     end
 
-    Caracal::Document.save("out/tables/reestr_roley.docx") do |doc|
+    Caracal::Document.save("out/tables/2_reestr_roley.docx") do |doc|
       doc.h3 "Реестр ролей участников процессов"
       doc.p
 
-      rows = [DocHelpers.header_row(["Код роли", "Роль", "Описание"])]
+      rows = [DocHelpers.header_row(["Код роли", "Роль", "Описание"], [1710, 2070, 5580])]
       DocHelpers::PROCESS_TYPE_ORDER.each do |prefix|
         next unless grouped.key?(prefix)
         rows << DocHelpers.section_header_row(DocHelpers::PROCESS_TYPE_NAMES[prefix], 3)
@@ -72,7 +72,7 @@ namespace :doc do
 
       doc.table rows, &DocHelpers::TABLE_STYLE
     end
-    puts "  wrote out/tables/reestr_roley.docx"
+    puts "  wrote out/tables/2_reestr_roley.docx"
   end
 
   # ---------------------------------------------------------------------------
@@ -96,18 +96,18 @@ namespace :doc do
     end
     data.sort_by! { |d| [d[:p_code], d[:role_id]] }
 
-    Caracal::Document.save("out/tables/matrica_uchastnik_rol.docx") do |doc|
+    Caracal::Document.save("out/tables/3_matrica_uchastnik_rol.docx") do |doc|
       doc.h3 "Матрица «Участник/роль»"
       doc.p
 
-      rows = [DocHelpers.header_row(["Код матрицы", "Код участника", "Участник процесса", "Код роли", "Роль"])]
+      rows = [DocHelpers.header_row(["Код матрицы", "Код участника", "Участник процесса", "Код роли", "Роль"], [990, 989, 3960, 1621, 1800])]
       data.each_with_index do |d, i|
         rows << ["М1.%03d" % (i + 1), d[:p_code], d[:p_name], d[:role_id], d[:role]]
       end
 
       doc.table rows, &DocHelpers::TABLE_STYLE
     end
-    puts "  wrote out/tables/matrica_uchastnik_rol.docx"
+    puts "  wrote out/tables/3_matrica_uchastnik_rol.docx"
   end
 
   # ---------------------------------------------------------------------------
@@ -120,22 +120,21 @@ namespace :doc do
 
     sorted_pids = DocHelpers.sort_process_ids(all_stories.map(&:first).uniq)
 
-    Caracal::Document.save("out/tables/reestr_us.docx") do |doc|
+    Caracal::Document.save("out/tables/4_reestr_us.docx") do |doc|
       doc.h3 "Реестр пользовательских историй с описанием компонентов"
       doc.p
 
-      rows = [DocHelpers.header_row(["Код пользовательской истории", "Код роли", "Я как", "Хочу", "Чтобы", "Код компонента"])]
+      rows = [DocHelpers.header_row(["Код пользовательской истории", "Я как", "Хочу", "Чтобы", "Код компонента"], [2085, 1530, 2250, 2340, 1154])]
       current_prefix = nil
       sorted_pids.each do |pid|
         prefix = pid[0]
         if prefix != current_prefix
           current_prefix = prefix
-          rows << DocHelpers.section_header_row(DocHelpers::PROCESS_TYPE_NAMES[prefix], 6)
+          rows << DocHelpers.section_header_row(DocHelpers::PROCESS_TYPE_NAMES[prefix], 5)
         end
         all_stories.select { |id, _| id == pid }.each do |_, story|
           rows << [
             story["story_id"],
-            story["role_id"],
             story["role"],
             story["want"],
             story["in_order_to"],
@@ -146,7 +145,7 @@ namespace :doc do
 
       doc.table rows, &DocHelpers::TABLE_STYLE
     end
-    puts "  wrote out/tables/reestr_us.docx"
+    puts "  wrote out/tables/4_reestr_us.docx"
   end
 
   # ---------------------------------------------------------------------------
@@ -159,11 +158,11 @@ namespace :doc do
 
     sorted = DocHelpers.sort_process_ids(procs.keys)
 
-    Caracal::Document.save("out/tables/reestr_processov.docx") do |doc|
+    Caracal::Document.save("out/tables/5_reestr_processov.docx") do |doc|
       doc.h3 "Реестр процессов"
       doc.p
 
-      rows = [DocHelpers.header_row(["Код процесса", "Наименование процесса", "Тип процесса", "Краткое описание"])]
+      rows = [DocHelpers.header_row(["Код процесса", "Наименование процесса", "Тип процесса", "Краткое описание"], [1530, 2160, 1980, 3690])]
       current_prefix = nil
       sorted.each do |pid|
         prefix = pid[0]
@@ -177,7 +176,7 @@ namespace :doc do
 
       doc.table rows, &DocHelpers::TABLE_STYLE
     end
-    puts "  wrote out/tables/reestr_processov.docx"
+    puts "  wrote out/tables/5_reestr_processov.docx"
   end
 
   # ---------------------------------------------------------------------------
@@ -191,11 +190,11 @@ namespace :doc do
 
     sorted_pids = DocHelpers.sort_process_ids(all_stories.map(&:first).uniq)
 
-    Caracal::Document.save("out/tables/matrica_process_us.docx") do |doc|
+    Caracal::Document.save("out/tables/6_matrica_process_us.docx") do |doc|
       doc.h3 "Матрица «Процесс/пользовательская история»"
       doc.p
 
-      rows = [DocHelpers.header_row(["Код матрицы", "Код процесса", "Наименование процесса", "Код пользовательской истории"])]
+      rows = [DocHelpers.header_row(["Код матрицы", "Код процесса", "Наименование процесса", "Код пользовательской истории"], [1725, 1620, 3510, 2505])]
       seq = 0
       sorted_pids.each do |pid|
         pname = procs.dig(pid, "name") || pid
@@ -207,7 +206,7 @@ namespace :doc do
 
       doc.table rows, &DocHelpers::TABLE_STYLE
     end
-    puts "  wrote out/tables/matrica_process_us.docx"
+    puts "  wrote out/tables/6_matrica_process_us.docx"
   end
 
   # ---------------------------------------------------------------------------
@@ -230,11 +229,11 @@ namespace :doc do
     parents = comps.values.reject { |c| c["parent_id"] }
     children_by_parent = comps.values.select { |c| c["parent_id"] }.group_by { |c| c["parent_id"] }
 
-    Caracal::Document.save("out/tables/reestr_komponentov.docx") do |doc|
+    Caracal::Document.save("out/tables/7_reestr_komponentov.docx") do |doc|
       doc.h3 "Реестр компонентов Системы с описанием реализуемых функций"
       doc.p
 
-      rows = [DocHelpers.header_row(["Код компонента", "Наименование компонента", "Тип", "Реализуемые функции"])]
+      rows = [DocHelpers.header_row(["Код компонента", "Наименование компонента", "Тип", "Реализуемые функции"], [1620, 2340, 2070, 3330])]
       parents.each do |c|
         rows << [{content: c["ID"], bold: true}, {content: c["Наименование компонента"], bold: true}, translate.call(c["Type"]), c["Описание реализуемых функций"]]
         (children_by_parent[c["ID"]] || []).each do |child|
@@ -244,7 +243,7 @@ namespace :doc do
 
       doc.table rows, &DocHelpers::TABLE_STYLE
     end
-    puts "  wrote out/tables/reestr_komponentov.docx"
+    puts "  wrote out/tables/7_reestr_komponentov.docx"
   end
 
   # ---------------------------------------------------------------------------
@@ -266,18 +265,18 @@ namespace :doc do
       (children_by_parent[c["ID"]] || []).each { |child| ordered << child }
     end
 
-    Caracal::Document.save("out/tables/trebovaniya_funkcii.docx") do |doc|
+    Caracal::Document.save("out/tables/13_trebovaniya_funkcii.docx") do |doc|
       doc.h3 "Требования к функциям, выполняемым Системой"
       doc.p
 
-      rows = [DocHelpers.header_row(["№ п/п", "Наименование компонента Системы", "Функции компонента Системы"])]
+      rows = [DocHelpers.header_row(["№ п/п", "Наименование компонента Системы", "Функции компонента Системы"], [540, 2520, 6300])]
       ordered.each_with_index do |c, i|
         rows << [(i + 1).to_s, strip_name.call(c["Наименование компонента"]), c["Описание реализуемых функций"]]
       end
 
       doc.table rows, &DocHelpers::TABLE_STYLE
     end
-    puts "  wrote out/tables/trebovaniya_funkcii.docx"
+    puts "  wrote out/tables/13_trebovaniya_funkcii.docx"
   end
 
   # ---------------------------------------------------------------------------
@@ -316,18 +315,18 @@ namespace :doc do
 
     data.sort_by! { |d| [d[:cid], d[:p_code]] }
 
-    Caracal::Document.save("out/tables/matrica_komponent_uchastnik.docx") do |doc|
+    Caracal::Document.save("out/tables/9_matrica_komponent_uchastnik.docx") do |doc|
       doc.h3 "Матрица «Компонент/участник процесса»"
       doc.p
 
-      rows = [DocHelpers.header_row(["Код матрицы", "Компонент", "Код компонента", "Участник процесса", "Код участника"])]
+      rows = [DocHelpers.header_row(["Код матрицы", "Компонент", "Код компонента", "Участник процесса", "Код участника"], [1350, 2394, 1296, 2970, 1350])]
       data.each_with_index do |d, i|
         rows << ["М4.%03d" % (i + 1), d[:cname], d[:cid], d[:p_name], d[:p_code]]
       end
 
       doc.table rows, &DocHelpers::TABLE_STYLE
     end
-    puts "  wrote out/tables/matrica_komponent_uchastnik.docx"
+    puts "  wrote out/tables/9_matrica_komponent_uchastnik.docx"
   end
 
   # ---------------------------------------------------------------------------
@@ -345,11 +344,11 @@ namespace :doc do
       by_component[cid] << proj
     end
 
-    Caracal::Document.save("out/tables/reestr_info_objektov_spravochniki.docx") do |doc|
+    Caracal::Document.save("out/tables/10-2_reestr_info_objektov_spravochniki.docx") do |doc|
       doc.h3 "Реестр информационных объектов (справочники)"
       doc.p
 
-      rows = [DocHelpers.header_row(["Код справочника", "Наименование справочника", "Описание"])]
+      rows = [DocHelpers.header_row(["Код справочника", "Наименование справочника", "Описание"], [3120, 3120, 3120])]
       by_component.keys.sort.each do |cid|
         cname = comps.dig(cid, "Наименование компонента") || cid
         rows << DocHelpers.section_header_row(cname, 3)
@@ -360,7 +359,7 @@ namespace :doc do
 
       doc.table rows, &DocHelpers::TABLE_STYLE
     end
-    puts "  wrote out/tables/reestr_info_objektov_spravochniki.docx"
+    puts "  wrote out/tables/10-2_reestr_info_objektov_spravochniki.docx"
   end
 
   # ---------------------------------------------------------------------------
@@ -371,11 +370,11 @@ namespace :doc do
     DocHelpers.ensure_output_dir
     aggregates = DocHelpers.load_all_jsonl("work/ta/**/*_aggregates.jsonl")
 
-    Caracal::Document.save("out/tables/reestr_info_objektov_obyekty.docx") do |doc|
+    Caracal::Document.save("out/tables/10-1_reestr_info_objektov_obyekty.docx") do |doc|
       doc.h3 "Реестр информационных объектов (объекты)"
       doc.p
 
-      rows = [DocHelpers.header_row(["Код объекта", "Наименование объекта", "Описание"])]
+      rows = [DocHelpers.header_row(["Код объекта", "Наименование объекта", "Описание"], [3120, 3120, 3120])]
       aggregates.sort_by { |cid, _| cid }.each do |cid, agg|
         code = "#{cid}-AG-01"
         full = agg["Name"].to_s
@@ -401,7 +400,7 @@ namespace :doc do
 
       doc.table rows, &DocHelpers::TABLE_STYLE
     end
-    puts "  wrote out/tables/reestr_info_objektov_obyekty.docx"
+    puts "  wrote out/tables/10-1_reestr_info_objektov_obyekty.docx"
   end
 
   # ---------------------------------------------------------------------------
@@ -427,11 +426,11 @@ namespace :doc do
     end
     entries.sort_by! { |cid, code, _| [cid, code] }
 
-    Caracal::Document.save("out/tables/matrica_komponent_info.docx") do |doc|
+    Caracal::Document.save("out/tables/11_matrica_komponent_info.docx") do |doc|
       doc.h3 "Матрица «Компонент/информационный объект»"
       doc.p
 
-      rows = [DocHelpers.header_row(["Код матрицы", "Компонент", "Код компонента", "Информационный объект", "Код информационного объекта"])]
+      rows = [DocHelpers.header_row(["Код матрицы", "Компонент", "Код компонента", "Информационный объект", "Код информационного объекта"], [1080, 2664, 1206, 2538, 1872])]
       entries.each_with_index do |(cid, code, name), i|
         cname = comps.dig(cid, "Наименование компонента") || cid
         rows << ["М5.%03d" % (i + 1), cname, cid, name, code]
@@ -439,7 +438,7 @@ namespace :doc do
 
       doc.table rows, &DocHelpers::TABLE_STYLE
     end
-    puts "  wrote out/tables/matrica_komponent_info.docx"
+    puts "  wrote out/tables/11_matrica_komponent_info.docx"
   end
 
   # ---------------------------------------------------------------------------
@@ -453,11 +452,11 @@ namespace :doc do
 
     sorted_pids = DocHelpers.sort_process_ids(all_stories.map(&:first).uniq)
 
-    Caracal::Document.save("out/tables/matrica_us_komponent.docx") do |doc|
+    Caracal::Document.save("out/tables/12_matrica_us_komponent.docx") do |doc|
       doc.h3 "Матрица «Пользовательская история/компонент»"
       doc.p
 
-      rows = [DocHelpers.header_row(["Код матрицы", "Код пользовательской истории", "Компонент", "Код компонента"])]
+      rows = [DocHelpers.header_row(["Код матрицы", "Код пользовательской истории", "Компонент", "Код компонента"], [1170, 1815, 5310, 1065])]
       seq = 0
       sorted_pids.each do |pid|
         all_stories.select { |id, _| id == pid }.each do |_, story|
@@ -471,7 +470,7 @@ namespace :doc do
 
       doc.table rows, &DocHelpers::TABLE_STYLE
     end
-    puts "  wrote out/tables/matrica_us_komponent.docx"
+    puts "  wrote out/tables/12_matrica_us_komponent.docx"
   end
 
   # ---------------------------------------------------------------------------
@@ -482,17 +481,17 @@ namespace :doc do
     DocHelpers.ensure_output_dir
     rows_data = File.foreach("work/ta/component-tech-mapping.jsonl").map { |l| JSON.parse(l) }
 
-    Caracal::Document.save("out/tables/matrica_komponent_tech.docx") do |doc|
+    Caracal::Document.save("out/tables/8_matrica_komponent_tech.docx") do |doc|
       doc.h3 "Матрица «Компонент/технология»"
       doc.p
 
-      rows = [DocHelpers.header_row(["Код компонента", "Наименование компонента", "Технологии"])]
+      rows = [DocHelpers.header_row(["Код компонента", "Наименование компонента", "Технологии"], [1530, 3780, 4050])]
       rows_data.each do |r|
         rows << [r["component_id"], r["component_name"], (r["technologies"] || []).join(", ")]
       end
 
       doc.table rows, &DocHelpers::TABLE_STYLE
     end
-    puts "  wrote out/tables/matrica_komponent_tech.docx"
+    puts "  wrote out/tables/8_matrica_komponent_tech.docx"
   end
 end

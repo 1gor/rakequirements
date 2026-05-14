@@ -15,9 +15,28 @@ module DocAssemble
     tbl
   end
 
+  TABLE_FONT_HALFPOINTS = 20  # 10pt
+
   def normalize_table!(tbl)
     tbl.xpath(".//w:p", NS).each { |p| force_paragraph_defaults!(p) }
     tbl.xpath(".//w:tr", NS).each { |tr| collapse_category_row!(tr) }
+    tbl.xpath(".//w:r", NS).each { |r| force_run_font_size!(r, TABLE_FONT_HALFPOINTS) }
+  end
+
+  def force_run_font_size!(r, half_points)
+    rPr = r.xpath("./w:rPr", NS).first
+    unless rPr
+      rPr = Nokogiri::XML::Node.new("w:rPr", r.document)
+      r.prepend_child(rPr)
+    end
+    rPr.xpath("./w:sz", NS).each(&:remove)
+    rPr.xpath("./w:szCs", NS).each(&:remove)
+    sz = Nokogiri::XML::Node.new("w:sz", r.document)
+    sz["w:val"] = half_points.to_s
+    szCs = Nokogiri::XML::Node.new("w:szCs", r.document)
+    szCs["w:val"] = half_points.to_s
+    rPr.add_child(sz)
+    rPr.add_child(szCs)
   end
 
   def force_paragraph_defaults!(p)
@@ -87,8 +106,14 @@ module DocAssemble
         imported = target_doc.root.children.last
         normalize_table!(imported)
         p.node.add_next_sibling(imported)
-        p.node.remove
-        puts "spliced TABLE #{slug}"
+        if p.node.xpath("./w:pPr/w:sectPr", NS).any?
+          p.node.xpath("./w:r", NS).each(&:remove)
+          imported.add_next_sibling(p.node)
+          puts "spliced TABLE #{slug} (preserved section break)"
+        else
+          p.node.remove
+          puts "spliced TABLE #{slug}"
+        end
       elsif text =~ PLACEHOLDER_RE
         new_text = text.gsub(PLACEHOLDER_RE) do
           kind, slug = $1, $2
