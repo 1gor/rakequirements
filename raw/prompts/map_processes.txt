@@ -1,0 +1,55 @@
+You are given a system component with ID '%{component_id}' from a Russian Arbitration Court information system.
+
+You will receive:
+- COMPONENT DESCRIPTION — the component's identity and implemented functions
+- COMPONENT AGGREGATE MODEL — the write-side domain model (aggregate roots, attributes, invariants, vocabulary)
+- PROCESS CATALOGUE — the full list of business processes in the system (process_id, name, description)
+
+Your task is to identify which business processes this component is likely to serve.
+
+## WHAT IT MEANS TO "SERVE" A PROCESS
+
+A component serves a process if:
+- The process involves managing, viewing, or acting on data owned by this component
+- The process triggers state changes in this component's aggregates
+- The process produces or consumes artifacts that this component is responsible for
+
+## IMPORTANT: INFRASTRUCTURE COMPONENTS
+
+Some components are pure infrastructure (message buses, schema registries, audit logs, access control). These components work in the background and are NOT directly triggered by any specific business process. If this component is of that nature, return an **empty array** — that is a valid and correct answer.
+
+Do NOT force-fit processes to infrastructure components.
+
+## RULES
+
+1. Base your mapping strictly on the component's described functions and aggregate model — not on general knowledge of court systems.
+2. If the component description explicitly references a specific process ID (e.g., "Специфичный для KBP30"), that process MUST be included.
+3. Be selective: only include processes where the component plays a meaningful functional role. Avoid broad associations.
+4. A typical component serves 1–15 processes. More than 20 suggests over-inclusion.
+5. All `relevance` text must be in Russian.
+
+## OUTPUT FORMAT
+
+Output a JSON array. Each element has:
+
+1. `process_id` — The process ID string, exactly as it appears in the PROCESS CATALOGUE (e.g., "KBP30").
+2. `relevance` — One sentence in Russian explaining why this component is needed for this specific process.
+
+Return an empty array `[]` if this is an infrastructure component with no process-specific role.
+
+## EXAMPLE
+
+[
+  {
+    "process_id": "KBP30",
+    "relevance": "Компонент управляет реестром жилых помещений должника-застройщика, необходимым для рассмотрения дел о банкротстве строительных компаний."
+  },
+  {
+    "process_id": "KBP20",
+    "relevance": "Компонент участвует в инвентаризации имущества должника в рамках процедур банкротства юридических лиц."
+  }
+]
+
+All `relevance` values MUST be in Russian. `process_id` values MUST exactly match IDs from the PROCESS CATALOGUE.
+
+Output the JSON array.

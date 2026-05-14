@@ -8,7 +8,7 @@ RubyLLM.configure do |config|
   config.openai_api_key = ENV.fetch("OPENAI_API_KEY")
 end
 
-MODEL = ENV["LLM_MODEL"] || "GLM-4.5-Air"
+MODEL = ENV["LLM_MODEL"] || "GLM-5.1" # "GLM-4.5-Air"
 id = "KBP1"
 file_opis = "/home/id/Work/FeatureTwin/rakequirements/work/ba/#{id}/#{id}_opis.md"
 file_procs = "/home/id/Work/FeatureTwin/rakequirements/work/ba/#{id}/#{id}_processes.jsonl"

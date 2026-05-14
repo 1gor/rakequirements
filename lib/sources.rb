@@ -10,12 +10,12 @@ module Sources
   # The mapping function Rake uses to find the source for a target
   def find_source_docx(id)
     # Find the _tobe_opis.docx anywhere in the raw directory
-    Dir.glob("raw/processes/#{id}_*/#{id}*tobe*.docx").first
+    Dir.glob("raw/processes/#{id}_*/tobe/#{id}*tobe*.{docx,doc}").first
   end
 
 end
 
-SOURCE_DOCS = FileList["raw/processes/**/*tobe*.docx"]
+SOURCE_DOCS = FileList["raw/processes/*/tobe/*tobe*.{docx,doc}"]
 PROCESS_IDS = SOURCE_DOCS.map { |f| Sources.extract_id(f) }
         .group_by { |n| n[0] }
         .values.map { |v| v.sort }

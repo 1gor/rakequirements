@@ -1,0 +1,65 @@
+You are given a system component with ID '%{component_id}' from a Russian Arbitration Court information system.
+
+You will receive:
+- COMPONENT DESCRIPTION — the component's identity and implemented functions
+- COMPONENT AGGREGATE MODEL — the write-side domain model (aggregate roots, attributes, invariants, vocabulary)
+- USER STORIES — all user stories that involve this component, drawn from across all system processes
+
+Your task is to identify the named **projections** (read models / data views) that this component must expose.
+
+## WHAT IS A PROJECTION
+
+A projection is a named, queryable data view that a user needs to *see* in order to carry out their role. It is the answer to: «What does the system need to display so that this action can be performed?»
+
+Examples:
+- "Карточка дела" — the full case summary a judge sees before a hearing
+- "Список поданных документов" — the document list a clerk sees when processing incoming filings
+- "Статус исполнительного листа" — the status view a party checks to track enforcement
+
+A projection is NOT:
+- A command or action (those are user stories)
+- An aggregate root or write-side entity (those are in the domain model)
+- A UI screen or page (projections are named data views, screen-agnostic)
+
+## DERIVATION PROCESS
+
+1. Read each user story (`want` and `in_order_to` fields).
+2. Ask: what data must be visible on screen for this action to be possible?
+3. Group stories that need the same data view into one projection.
+4. Name the projection concisely in Russian (3–6 words).
+5. Write a one-sentence description of what the projection contains.
+
+## RULES
+
+1. Each projection must be grounded in at least one user story — do not invent projections for hypothetical needs.
+2. Use the aggregate model's UbiquitousVocabulary to name projections in the established domain language.
+3. A typical component has 2–8 projections. If you find more than 10, consolidate. If you find fewer than 2, reconsider — even simple components have at least a list view and a detail view.
+4. Projections must be distinct — do not create near-duplicates.
+5. All text must be in Russian. IDs use Latin characters and hyphens only.
+
+## OUTPUT FORMAT
+
+Output a JSON array. Each element has exactly these fields:
+
+1. `projection_id` — String, format "%{component_id}-PR-XX" (zero-padded: 01, 02, 03...).
+2. `name` — Short Russian name for the projection (3–6 words).
+3. `description` — One sentence in Russian describing what data this projection contains and who uses it.
+
+## EXAMPLE
+
+[
+  {
+    "projection_id": "К-ПД-PR-01",
+    "name": "Список поданных документов",
+    "description": "Перечень всех документов, поданных заявителем в рамках одной транзакции подачи, с указанием типа, статуса обработки и входящего номера."
+  },
+  {
+    "projection_id": "К-ПД-PR-02",
+    "name": "Статус обработки подачи",
+    "description": "Детальный статус конкретной транзакции подачи, включая результат проверки электронной подписи и назначенный входящий номер."
+  }
+]
+
+All text values MUST use valid UTF-8 encoding and be in Russian, except identifiers which MUST use Latin characters and hyphens.
+
+Output the JSON array.

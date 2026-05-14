@@ -1,7 +1,7 @@
 require "set"
 
 STORIES_PROMPT_FILE = "raw/prompts/extract_user_stories.txt"
-STORIES_MODEL = ENV["STORIES_MODEL"] || "claude-sonnet-4-5"
+STORIES_MODEL = ENV["STORIES_MODEL"] || "claude-opus-4.6"
 
 # Build a lookup of full component definitions keyed by ID
 COMPONENTS_CATALOG = File.foreach(COMPONENTS_FILE)
@@ -148,6 +148,7 @@ EXTRACT_STORIES = ->(opis_path, roles_path, components_map_path, prompt_path, ta
     assume_model_exists: true
   ).with_instructions(system_prompt)
     .with_temperature(temperature)
+    .with_params(max_tokens: 16_384)
 
   attempts = 0
   valid_stories = nil
