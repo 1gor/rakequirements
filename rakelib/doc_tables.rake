@@ -10,7 +10,7 @@ namespace :doc do
                process_story_matrix components component_participant_matrix
                info_object_projections info_object_aggregates
                component_info_matrix story_component_matrix
-               component_tech_matrix]
+               component_tech_matrix system_features]
 
   # ---------------------------------------------------------------------------
   # Р1. Реестр участников процессов
