@@ -103,6 +103,66 @@ namespace :spell do
     text[0, offset] + replacement + text[offset + word.length..]
   end
 
+  # Spellcheck a single string interactively. Returns [new_val, changed?, quit?].
+  def self.spellcheck_string(pipe, val, field_label, record_id, session_decisions, on_flag)
+    changed = false
+    loop do
+      misses = pipe.check(val)
+      misses.reject! { |m| %i[skip add].include?(session_decisions[m[:word]]) }
+
+      if (auto = misses.find { |m| session_decisions[m[:word]].is_a?(String) })
+        val = replace_at(val, auto[:offset], auto[:word], session_decisions[auto[:word]])
+        changed = true
+        next
+      end
+
+      miss = misses.first
+      break unless miss
+
+      on_flag.call
+
+      action = prompt(record_id, field_label, val, miss)
+      case action.first
+      when :quit
+        return [val, changed, true]
+      when :skip
+        session_decisions[miss[:word]] = :skip
+      when :add
+        session_decisions[miss[:word]] = :add
+      when :replace
+        replacement = action[1]
+        val = replace_at(val, miss[:offset], miss[:word], replacement)
+        session_decisions[miss[:word]] = replacement
+        changed = true
+      end
+    end
+    [val, changed, false]
+  end
+
+  # Walk a field value (String / Array of strings / Hash of string=>string).
+  # Yields [label, text, setter] for each spellcheckable string.
+  def self.each_text(field, value)
+    return enum_for(:each_text, field, value) unless block_given?
+    case value
+    when String
+      yield field, value, ->(new_val) { new_val }
+    when Array
+      value.each_with_index do |item, idx|
+        next unless item.is_a?(String) && !item.empty?
+        yield "#{field}[#{idx}]", item, ->(new_val) {
+          new_arr = value.dup
+          new_arr[idx] = new_val
+          new_arr
+        }
+      end
+    when Hash
+      value.each do |k, v|
+        next unless v.is_a?(String) && !v.empty?
+        yield "#{field}[#{k}]", v, ->(new_val) { value.merge(k => new_val) }
+      end
+    end
+  end
+
   # Core driver shared by every spell:* task.
   def self.run_spellcheck(glob:, fields:, id_key:, prefix:)
     files = Dir.glob(glob).sort
@@ -138,47 +198,30 @@ namespace :spell do
 
           fields.each do |field|
             break if quit
-            val = record[field]
-            next if val.nil? || val.empty?
-            original_val = val
+            value = record[field]
+            next if value.nil?
 
-            loop do
-              misses = pipe.check(val)
-              misses.reject! { |m| %i[skip add].include?(session_decisions[m[:word]]) }
+            each_text(field, value) do |label, text, setter|
+              break if quit
 
-              if (auto = misses.find { |m| session_decisions[m[:word]].is_a?(String) })
-                val = replace_at(val, auto[:offset], auto[:word], session_decisions[auto[:word]])
-                record_changed = true
-                next
-              end
+              on_flag = -> {
+                if flagged.zero?
+                  puts
+                  puts "[#{path}]"
+                end
+                flagged += 1
+              }
 
-              miss = misses.first
-              break unless miss
-
-              if flagged.zero?
-                puts
-                puts "[#{path}]"
-              end
-              flagged += 1
-
-              action = prompt(record[id_key], field, val, miss)
-              case action.first
-              when :quit
-                quit = true
-                break
-              when :skip
-                session_decisions[miss[:word]] = :skip
-              when :add
-                session_decisions[miss[:word]] = :add
-              when :replace
-                replacement = action[1]
-                val = replace_at(val, miss[:offset], miss[:word], replacement)
-                session_decisions[miss[:word]] = replacement
+              new_text, text_changed, did_quit = spellcheck_string(
+                pipe, text, label, record[id_key], session_decisions, on_flag
+              )
+              quit = true if did_quit
+              if text_changed
+                value = setter.call(new_text)
+                record[field] = value
                 record_changed = true
               end
             end
-
-            record[field] = val if val != original_val
           end
 
           if record_changed
@@ -221,6 +264,39 @@ namespace :spell do
       glob: "work/ba/**/*_roles.jsonl",
       fields: %w[description],
       id_key: "role_id",
+      prefix: args[:prefix].to_s
+    )
+  end
+
+  desc "Interactively spellcheck name/description in TA projections.jsonl files. " \
+       "Pass a prefix to filter, e.g. rake 'spell:projections[К-АД]'."
+  task :projections, [:prefix] do |_, args|
+    run_spellcheck(
+      glob: "work/ta/**/*_projections.jsonl",
+      fields: %w[name description],
+      id_key: "projection_id",
+      prefix: args[:prefix].to_s
+    )
+  end
+
+  desc "Interactively spellcheck relevance in TA component-process map files. " \
+       "Pass a prefix to filter, e.g. rake 'spell:ta_processes[К-АД]'."
+  task :ta_processes, [:prefix] do |_, args|
+    run_spellcheck(
+      glob: "work/ta/**/*_processes.jsonl",
+      fields: %w[relevance],
+      id_key: "process_id",
+      prefix: args[:prefix].to_s
+    )
+  end
+
+  desc "Interactively spellcheck Invariants and UbiquitousVocabulary in TA aggregates.jsonl files. " \
+       "Pass a prefix to filter, e.g. rake 'spell:aggregates[К-АД]'."
+  task :aggregates, [:prefix] do |_, args|
+    run_spellcheck(
+      glob: "work/ta/**/*_aggregates.jsonl",
+      fields: %w[Invariants UbiquitousVocabulary],
+      id_key: "component_id",
       prefix: args[:prefix].to_s
     )
   end
