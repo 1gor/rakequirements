@@ -143,10 +143,10 @@ EXTRACT_ROLES = ->(stories_path, opis_path, prompt_path, participants_path, prec
   stories_count = File.foreach(stories_path).count { |l| !l.strip.empty? }
 
   system_prompt = %(
-    You are an experienced business analyst with deep knowledge of Russian Arbitration Court processes and of the structure of court staff. You write in fluent and correct technical Russian only, except for technical terms.
+    You are an experienced business analyst with deep knowledge of Russian Arbitration Court processes and expertise in BPMN2 diagrams. You write in fluent and correct technical Russian only, except for technical terms.
   ).strip
 
-  temperature = 0.2
+  temperature = 0.3
   max_retries = 3
 
   unless QUIET
