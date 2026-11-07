@@ -188,7 +188,7 @@ EXTRACT_ROLES = ->(stories_path, opis_path, prompt_path, participants_path, prec
       warn "[#{id}] Response received (#{elapsed}s, #{raw.size} chars). Validating..." unless QUIET
       if raw.strip.empty?
         # Nothing to correct: start a fresh conversation and send the prompt again.
-        last_error = KotUtils.describe_empty_reply(msg)
+        last_error = KotUtils.describe_empty_reply(msg, target_path, attempts)
         last_error_class = "EmptyReply"
         warn "[#{id}] #{last_error}" unless QUIET
         chat = new_chat.call
@@ -202,10 +202,12 @@ EXTRACT_ROLES = ->(stories_path, opis_path, prompt_path, participants_path, prec
       last_error = e.message
       last_error_class = e.class.name
       warn "[#{id}] Validation failed: #{last_error}" unless QUIET
-    rescue RubyLLM::Error => e
+    rescue RubyLLM::Error, Faraday::Error => e
       last_error = e.message
       last_error_class = e.class.name
       warn "[#{id}] LLM error (#{last_error_class}): #{last_error}" unless QUIET
+      waited = KotUtils.recover_from_llm_error(chat, e, attempts, max_retries)
+      warn "[#{id}] Waited #{waited}s after the rate limit" if waited.positive? && !QUIET
     end
   end
 
@@ -224,6 +226,7 @@ EXTRACT_ROLES = ->(stories_path, opis_path, prompt_path, participants_path, prec
   end
 
   FileUtils.rm_f(err_file)
+  KotUtils.clear_thinking(target_path)
   puts "[OK] #{target_path} (#{valid_roles.size} roles from #{actors.size} actors)"
 }
 

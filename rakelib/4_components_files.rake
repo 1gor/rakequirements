@@ -9,6 +9,10 @@ COMPONENTS_MAX_TOKENS = ENV["COMPONENTS_MAX_TOKENS"]&.to_i&.then { |n| n.positiv
 RubyLLM.configure do |config|
   config.anthropic_api_key = ENV.fetch("Z_API_KEY")
   config.anthropic_api_base = "https://api.z.ai/api/anthropic"
+  # Seconds one LLM request may take, for every stage (ruby_llm default 300).
+  # A larger *_MAX_TOKENS needs more time. ruby_llm retries a timed-out
+  # request 3 times before giving up.
+  config.request_timeout = ENV.fetch("LLM_TIMEOUT", 300).to_i
 end
 
 module ZaiAuthPatch
@@ -71,8 +75,23 @@ VALIDATE_COMPONENTS = ->(parsed_json) {
   mappings
 }
 
+# Added to the prompt only after a reply that spent the whole output budget
+# on thinking (in this run, or in an earlier one: its .err starts with
+# EmptyReply). The saved thinking of KBP86 and TBP142 (November) showed why:
+# a large process grounds 29-39 components, rule 6 says reconsider above 25,
+# rule 5 adds sub-components back, and the model kept cutting and re-adding
+# until the budget ran out. Every other process gets May's prompt unchanged.
+DECIDE_ONCE_NOTE = <<~TXT.freeze
+
+
+  ## NOTE FOR THIS PROCESS
+
+  An earlier attempt for this process spent its entire output budget weighing which components to cut to stay within 25, and returned nothing. Select at most 25 components: those most clearly exercised by the process steps. Decide each component once and do not revisit decisions. Then output the JSON array.
+TXT
+
 MAP_COMPONENTS = ->(opis_path, processes_path, prompt_path, components_path, target_path) {
   id = target_path.match(%r{work/ba/([^/]+)/})[1]
+  err_file = "#{target_path}.err"
 
   user_prompt_template = File.read(prompt_path, encoding: "UTF-8")
   opis_content = File.read(opis_path, encoding: "UTF-8")
@@ -83,6 +102,11 @@ MAP_COMPONENTS = ->(opis_path, processes_path, prompt_path, components_path, tar
   user_prompt += "\n\n### КАТАЛОГ КОМПОНЕНТОВ СИСТЕМЫ:\n#{components_content}"
   user_prompt += "\n\n### СВЯЗАННЫЕ ПРОЦЕССЫ:\n#{processes_content}"
   user_prompt += "\n\n### ИСХОДНЫЙ ДОКУМЕНТ:\n#{opis_content}"
+  decide_once = -> {
+    user_prompt += DECIDE_ONCE_NOTE
+    warn "[#{id}] Prompt gets the decide-once note (an earlier reply ran out of tokens)" unless QUIET
+  }
+  decide_once.call if File.exist?(err_file) && File.read(err_file).start_with?("EmptyReply")
 
   system_prompt = %(
     You are an experienced business analyst and system architect with deep knowledge of Russian Arbitration Court processes. You write in fluent and correct technical Russian only, except for technical terms.
@@ -129,9 +153,10 @@ MAP_COMPONENTS = ->(opis_path, processes_path, prompt_path, components_path, tar
       warn "[#{id}] Response received (#{elapsed}s, #{raw.size} chars). Validating..." unless QUIET
       if raw.strip.empty?
         # Nothing to correct: start a fresh conversation and send the prompt again.
-        last_error = KotUtils.describe_empty_reply(msg)
+        last_error = KotUtils.describe_empty_reply(msg, target_path, attempts)
         last_error_class = "EmptyReply"
         warn "[#{id}] #{last_error}" unless QUIET
+        decide_once.call unless user_prompt.end_with?(DECIDE_ONCE_NOTE)
         chat = new_chat.call
         send_prompt = true
         next
@@ -143,14 +168,14 @@ MAP_COMPONENTS = ->(opis_path, processes_path, prompt_path, components_path, tar
       last_error = e.message
       last_error_class = e.class.name
       warn "[#{id}] Validation failed: #{last_error}" unless QUIET
-    rescue RubyLLM::Error => e
+    rescue RubyLLM::Error, Faraday::Error => e
       last_error = e.message
       last_error_class = e.class.name
       warn "[#{id}] LLM error (#{last_error_class}): #{last_error}" unless QUIET
+      waited = KotUtils.recover_from_llm_error(chat, e, attempts, max_retries)
+      warn "[#{id}] Waited #{waited}s after the rate limit" if waited.positive? && !QUIET
     end
   end
-
-  err_file = "#{target_path}.err"
 
   unless valid_mappings
     File.write(err_file, "#{last_error_class}: #{last_error}\n")
@@ -165,6 +190,7 @@ MAP_COMPONENTS = ->(opis_path, processes_path, prompt_path, components_path, tar
   end
 
   FileUtils.rm_f(err_file)
+  KotUtils.clear_thinking(target_path)
   puts "[OK] #{target_path} (#{valid_mappings.size} components mapped)"
 }
 

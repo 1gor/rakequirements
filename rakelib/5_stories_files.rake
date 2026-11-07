@@ -159,7 +159,7 @@ LINK_STORIES = ->(src_path, roles_path, components_map_path, use_cases_path, opi
       warn "[#{id}] Response received (#{elapsed}s, #{raw.size} chars). Validating..." unless QUIET
       if raw.strip.empty?
         # Nothing to correct: start a fresh conversation and send the prompt again.
-        last_error = KotUtils.describe_empty_reply(msg)
+        last_error = KotUtils.describe_empty_reply(msg, target_path, attempts)
         last_error_class = "EmptyReply"
         warn "[#{id}] #{last_error}" unless QUIET
         chat = new_chat.call
@@ -173,10 +173,12 @@ LINK_STORIES = ->(src_path, roles_path, components_map_path, use_cases_path, opi
       last_error = e.message
       last_error_class = e.class.name
       warn "[#{id}] Validation failed: #{last_error}" unless QUIET
-    rescue RubyLLM::Error => e
+    rescue RubyLLM::Error, Faraday::Error => e
       last_error = e.message
       last_error_class = e.class.name
       warn "[#{id}] LLM error (#{last_error_class}): #{last_error}" unless QUIET
+      waited = KotUtils.recover_from_llm_error(chat, e, attempts, max_retries)
+      warn "[#{id}] Waited #{waited}s after the rate limit" if waited.positive? && !QUIET
     end
   end
 
@@ -192,6 +194,7 @@ LINK_STORIES = ->(src_path, roles_path, components_map_path, use_cases_path, opi
   end
 
   FileUtils.rm_f(err_file)
+  KotUtils.clear_thinking(target_path)
   # May wrote similarity warnings here; stories are no longer generated.
   FileUtils.rm_f(target_path.sub(/\.jsonl$/, ".warn"))
   puts "[OK] #{target_path} (#{records.size} user stories, #{links.values.sum(&:size)} component links)"

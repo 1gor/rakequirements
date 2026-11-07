@@ -40,7 +40,7 @@ The pipeline follows a Rake **pull model**: each stage defines file rules where 
 
 ## Recommended execution order
 
-Default concurrency is **4** (set via `RAKE_JOBS` env var in `Rakefile`), reserving one slot from the Z.ai 5-concurrent-request limit for management/introspection. Override with `RAKE_JOBS=N` or `rake -j N`.
+Default concurrency is **4** (set via `RAKE_JOBS` env var in `Rakefile`), reserving one slot from the Z.ai 5-concurrent-request limit for management/introspection. Override with `RAKE_JOBS=N` (the Rakefile replaces any `rake -j` value).
 
 ```bash
 # Full forward pipeline (stages 1-5)

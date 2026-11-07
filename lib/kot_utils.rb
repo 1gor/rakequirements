@@ -96,8 +96,35 @@ module KotUtils
   # What came back when an LLM reply has no text: the stop reason, the content
   # block types and the token counts, for the .err file. A reply holding only a
   # thinking block with stop_reason "max_tokens" means the model spent its
-  # whole output budget on reasoning.
-  def describe_empty_reply(msg)
+  # whole output budget on reasoning. With a target, the reasoning is saved
+  # to tmp/thinking/ (ignored by git) for reading why.
+  def describe_empty_reply(msg, target_path = nil, attempt = nil)
+    saved = target_path && save_thinking(msg, target_path, attempt)
+    describe_reply_body(msg) + (saved ? ", saved to #{saved}" : "")
+  end
+
+  THINKING_DIR = "tmp/thinking"
+
+  def thinking_path(target_path, attempt)
+    File.join(THINKING_DIR, "#{File.basename(target_path)}.#{attempt}.md")
+  end
+
+  def save_thinking(msg, target_path, attempt)
+    text = msg.thinking&.text.to_s
+    return nil if text.empty?
+
+    path = thinking_path(target_path, attempt || 1)
+    FileUtils.mkdir_p(THINKING_DIR)
+    File.write(path, text)
+    path
+  end
+
+  # Removes the saved reasoning of a target once it has been built.
+  def clear_thinking(target_path)
+    FileUtils.rm_f(Dir.glob(thinking_path(target_path, "*")))
+  end
+
+  def describe_reply_body(msg)
     body = msg.raw.respond_to?(:body) ? msg.raw.body : nil
     if body.is_a?(String)
       body = begin
@@ -110,6 +137,21 @@ module KotUtils
     blocks = Array(body["content"]).map { |b| b.is_a?(Hash) ? b["type"] : b.class.name }
     "Empty reply: stop_reason=#{body["stop_reason"].inspect}, content blocks=#{blocks.inspect}, " \
       "output_tokens=#{msg.output_tokens.inspect}, thinking=#{msg.thinking&.text.to_s.size} chars"
+  end
+
+  # After an LLM error (no reply) the chat still holds the question that got
+  # no answer, and the next ask would send it a second time. Drop it, then on
+  # a rate limit wait before the next attempt. Z.ai error 1302 «Rate limit
+  # reached for requests» is a short-term limit on requests, separate from the
+  # 5-hour plan quota (1308/1316); ruby_llm has already retried three times
+  # within a second. Returns the seconds waited (0 when nothing to wait for).
+  def recover_from_llm_error(chat, error, attempt, max_attempts)
+    chat.messages.pop if chat.messages.last&.role == :user
+    return 0 unless error.is_a?(RubyLLM::RateLimitError) && attempt < max_attempts
+
+    seconds = 30 * attempt + rand(15)
+    sleep seconds
+    seconds
   end
 
   # THE ATOMIC WRITE PATTERN
