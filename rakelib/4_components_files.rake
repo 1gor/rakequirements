@@ -2,6 +2,8 @@ QUIET = %w[1 true yes].include?(ENV["QUIET"]&.downcase) unless defined?(QUIET)
 COMPONENTS_FILE = "raw/data/components.jsonl"
 COMPONENTS_PROMPT_FILE = "raw/prompts/map_components.txt"
 COMPONENTS_MODEL = ENV["COMPONENTS_MODEL"] || "claude-sonnet-4-5"
+# Output token limit. Unset: the ruby_llm default (4096), as in May.
+COMPONENTS_MAX_TOKENS = ENV["COMPONENTS_MAX_TOKENS"]&.to_i&.then { |n| n.positive? ? n : nil }
 
 # Z.ai Anthropic endpoint: uses Bearer auth instead of x-api-key
 RubyLLM.configure do |config|
@@ -93,23 +95,29 @@ MAP_COMPONENTS = ->(opis_path, processes_path, prompt_path, components_path, tar
     warn "[#{id}] model=#{COMPONENTS_MODEL} temp=#{temperature} prompt=#{user_prompt.size} chars"
   end
 
-  chat = RubyLLM.chat(
-    model: COMPONENTS_MODEL,
-    provider: :anthropic,
-    assume_model_exists: true
-  ).with_instructions(system_prompt)
-    .with_temperature(temperature)
+  new_chat = -> {
+    c = RubyLLM.chat(
+      model: COMPONENTS_MODEL,
+      provider: :anthropic,
+      assume_model_exists: true
+    ).with_instructions(system_prompt)
+      .with_temperature(temperature)
+    COMPONENTS_MAX_TOKENS ? c.with_params(max_tokens: COMPONENTS_MAX_TOKENS) : c
+  }
+  chat = new_chat.call
+  send_prompt = true
 
   attempts = 0
   valid_mappings = nil
   last_error = nil
+  last_error_class = nil
 
   while attempts < max_retries && !valid_mappings
     attempts += 1
     begin
       t0 = Time.now
-      msg = if attempts == 1
-        warn "[#{id}] Submitting to LLM (attempt 1/#{max_retries})..." unless QUIET
+      msg = if send_prompt
+        warn "[#{id}] Submitting to LLM (attempt #{attempts}/#{max_retries})..." unless QUIET
         chat.ask(user_prompt)
       else
         warn "[#{id}] Retry #{attempts}/#{max_retries} — #{last_error}" unless QUIET
@@ -117,8 +125,18 @@ MAP_COMPONENTS = ->(opis_path, processes_path, prompt_path, components_path, tar
       end
       elapsed = (Time.now - t0).round(1)
 
-      raw = msg.content.dup.force_encoding("UTF-8")
+      raw = msg.content.to_s.dup.force_encoding("UTF-8")
       warn "[#{id}] Response received (#{elapsed}s, #{raw.size} chars). Validating..." unless QUIET
+      if raw.strip.empty?
+        # Nothing to correct: start a fresh conversation and send the prompt again.
+        last_error = KotUtils.describe_empty_reply(msg)
+        last_error_class = "EmptyReply"
+        warn "[#{id}] #{last_error}" unless QUIET
+        chat = new_chat.call
+        send_prompt = true
+        next
+      end
+      send_prompt = false
       parsed_json = JSON.parse(strip_json_fences(raw))
       valid_mappings = VALIDATE_COMPONENTS.call(parsed_json)
     rescue JSON::ParserError, RuntimeError => e
