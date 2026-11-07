@@ -2,7 +2,7 @@ You are given the actors of business process '%{process_id}', taken verbatim fro
 
 You also receive:
 - PARTICIPANT DICTIONARY (СПРАВОЧНИК УЧАСТНИКОВ ПРОЦЕССА): participant groups and their member codes. Participants are the types of users of the System.
-- ROLE PRECEDENTS (РОЛИ ИЗ УТВЕРЖДЁННОГО КОТ): role names and their participant codes from the approved version of this document.
+- ROLE PRECEDENTS (ПРЕЦЕДЕНТЫ): role names and their participant codes from the approved version of this document, and decisions of the document owner.
 
 ## TASK
 
@@ -14,30 +14,31 @@ Build the role registry of this process: a list of atomic roles, each linked to 
    - «Помощник судьи/ секретарь СЗ/судья/иной сотрудник суда» → «Помощник судьи», «Секретарь судебного заседания», «Судья», «Сотрудник суда»
    - «Председатель суда / заместитель председателя суда» → «Председатель суда», «Заместитель председателя суда»
    - «Сотрудник/кандидат на должность» → «Сотрудник суда», «Кандидат на должность»
-2. **A parenthesis clarifies the head noun and adds no roles:**
-   - «Заявитель (Кредитор/Должник/АУ/Иное ЛУВД)» → «Заявитель»
-   - «ЛУВД (в т.ч заинтересованное лицо)» → «Лицо, участвующее в деле»
+2. **A parenthesis clarifies the head noun and adds no roles:** «Заявитель (Кредитор/Должник/АУ/Иное ЛУВД)» → «Заявитель».
 3. **One role per distinct role in the process.** When several actors contain the same role, create the role once and list all those actors.
 4. **Name roles as singular professional titles in Russian** and expand abbreviations:
    - «Секретарь СЗ» → «Секретарь судебного заседания»
-   - «Канцелярия» → «Сотрудник канцелярии», «Отдел кадров» → «Сотрудник отдела кадров»
+   - A department of the court is its employee: «Канцелярия» → «Сотрудник канцелярии», «Отдел кадров» → «Сотрудник отдела кадров»
    - «Иные ЛУВД» → «Иное лицо, участвующее в деле»
    - A collegial panel of judges is its member: «Коллегия судей», «Тройка судей», «Судебный состав» → «Судья»
    - Never use a group name from the dictionary («Суд», «Лица, участвующие в деле», «Стороны по делу») as a role.
-5. **Follow the precedents.** When a role of this process means the same as a precedent role, use the precedent's name and participant code exactly. The precedents keep this registry consistent with the approved document.
+   - Otherwise keep the analysts' wording: make it singular and expand abbreviations, but never replace an analysts' term with a synonym or a «corrected» term of your own. «Суд-поручитель» and «Третейский суд» stay as written.
+5. **Follow the precedents.** When a role of this process means the same as a precedent role, use the precedent's name and participant code exactly. The precedents keep this registry consistent with the approved document. For any other role, decide the participant yourself from the dictionary and your knowledge of Russian arbitration courts and court staff.
 6. **Never create a role for «Система»** or any other automated actor.
-7. **Link each role to the most specific member code:**
-   - Истец, Ответчик, Заявитель, Должник, Кредитор, Взыскатель, Арбитражный управляющий, Лицо, участвующее в деле → P-01.1
-   - Третье лицо, Заинтересованное лицо, Иное лицо, участвующее в деле → P-01.2
-   - Председатель суда, Заместитель председателя суда → P-02.1
-   - Председатель судебного состава, Председатель судебной коллегии → P-02.2
+7. **Link each role to the most specific member code of the dictionary.** Common mappings:
+   - Истец, Ответчик, Заявитель, Должник, Кредитор → P-01.1 (Стороны по делу)
+   - Третье лицо, Заинтересованное лицо → P-01.2 (Третьи лица и заинтересованные лица)
+   - Председатель суда → P-02.1
+   - Председатель судебного состава → P-02.2
    - Судья → P-02.3
-   - Помощник судьи, Секретарь судебного заседания and other staff of a judge → P-02.4
-   - Court staff outside a judge's office (канцелярия, архив, отделы кадров, бухгалтерии, информатизации, МТО, делопроизводства, пресс-служба, their heads, commissions of court staff) → P-02.5
-   - Эксперт, Свидетель, Переводчик, Специалист, Экспертное учреждение → P-03.1
-   - Persons and organisations outside the court that are only indirectly involved in the process: Госархив, поставщик, подрядчик, эксплуатирующая организация, работник почтовой связи, кандидат на должность → P-03.2
-   - Арбитражный заседатель → P-04.1; Судебный примиритель → P-05.1; Медиатор → P-05.2
-   In a supporting process (OBP...) the actors are court staff (P-02.x) unless they are clearly outside persons or organisations.
+   - Помощник судьи, Секретарь судебного заседания → P-02.4 (Сотрудник аппарата судьи)
+   - Сотрудник канцелярии, Сотрудник архива, Специалист по делопроизводству → P-02.5 (Сотрудник аппарата суда)
+   - Эксперт, Свидетель, Переводчик → P-03.1 (Иной участник процесса)
+   - Госархив, Поставщик, Подрядчик, Кандидат на должность → P-03.2 (Внешний участник)
+   - Арбитражный заседатель → P-04.1
+   - Судебный примиритель → P-05.1
+   - Медиатор → P-05.2
+   A supporting process (OBP...) runs inside the court, so its actors are court staff unless they are clearly outside persons or organisations.
 8. **Description:** one or two sentences in Russian on what the role does in THIS process, based on its stories. Do not restate the participant's description.
 
 ## OUTPUT

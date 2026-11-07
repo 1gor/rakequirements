@@ -42,6 +42,8 @@ ROLES_MODEL = ENV["ROLES_MODEL"] || "claude-sonnet-4-5"
 ROLES_PROMPT_FILE = "raw/prompts/extract_roles.txt"
 PARTICIPANTS_FILE = "raw/data/grouped_participants.json"
 ROLE_PRECEDENTS_FILE = "raw/data/may_role_participants.jsonl"
+# Output token limit. Unset: the ruby_llm default (4096), as in May.
+ROLES_MAX_TOKENS = ENV["ROLES_MAX_TOKENS"]&.to_i&.then { |n| n.positive? ? n : nil }
 
 PARTICIPANT_NAMES = JSON.parse(File.read(PARTICIPANTS_FILE, encoding: "UTF-8"))
   .flat_map { |group| group["members"] }
@@ -131,7 +133,7 @@ ROLES_PROMPT = ->(id, stories_path, opis_path, prompt_path, participants_path, p
   user_prompt += "\n\n### ПАСПОРТ ПРОЦЕССА\n"
   user_prompt += passport.map { |k, v| "#{k}: #{v}" }.join("\n")
   user_prompt += "\n\n### СПРАВОЧНИК УЧАСТНИКОВ ПРОЦЕССА\n#{File.read(participants_path, encoding: "UTF-8")}"
-  user_prompt += "\n\n### РОЛИ ИЗ УТВЕРЖДЁННОГО КОТ (роль → код участника)\n"
+  user_prompt += "\n\n### ПРЕЦЕДЕНТЫ: РОЛИ ИЗ УТВЕРЖДЁННОГО КОТ И РЕШЕНИЯ ВЛАДЕЛЬЦА ДОКУМЕНТА (роль → код участника)\n"
   user_prompt += precedents.map { |r| "#{r["role"]} → #{r["participant_code"]}" }.join("\n")
 
   [user_prompt, actors]
@@ -153,12 +155,17 @@ EXTRACT_ROLES = ->(stories_path, opis_path, prompt_path, participants_path, prec
     warn "[#{id}] model=#{ROLES_MODEL} temp=#{temperature} actors=#{actors.size} stories=#{stories_count} prompt=#{user_prompt.size} chars"
   end
 
-  chat = RubyLLM.chat(
-    model: ROLES_MODEL,
-    provider: :anthropic,
-    assume_model_exists: true
-  ).with_instructions(system_prompt)
-    .with_temperature(temperature)
+  new_chat = -> {
+    c = RubyLLM.chat(
+      model: ROLES_MODEL,
+      provider: :anthropic,
+      assume_model_exists: true
+    ).with_instructions(system_prompt)
+      .with_temperature(temperature)
+    ROLES_MAX_TOKENS ? c.with_params(max_tokens: ROLES_MAX_TOKENS) : c
+  }
+  chat = new_chat.call
+  send_prompt = true
   attempts = 0
   valid_roles = nil
   last_error = nil
@@ -168,8 +175,8 @@ EXTRACT_ROLES = ->(stories_path, opis_path, prompt_path, participants_path, prec
     attempts += 1
     begin
       t0 = Time.now
-      msg = if attempts == 1
-        warn "[#{id}] Submitting to LLM (attempt 1/#{max_retries})..." unless QUIET
+      msg = if send_prompt
+        warn "[#{id}] Submitting to LLM (attempt #{attempts}/#{max_retries})..." unless QUIET
         chat.ask(user_prompt)
       else
         warn "[#{id}] Retry #{attempts}/#{max_retries} — #{last_error}" unless QUIET
@@ -177,8 +184,18 @@ EXTRACT_ROLES = ->(stories_path, opis_path, prompt_path, participants_path, prec
       end
       elapsed = (Time.now - t0).round(1)
 
-      raw = msg.content.dup.force_encoding("UTF-8")
+      raw = msg.content.to_s.dup.force_encoding("UTF-8")
       warn "[#{id}] Response received (#{elapsed}s, #{raw.size} chars). Validating..." unless QUIET
+      if raw.strip.empty?
+        # Nothing to correct: start a fresh conversation and send the prompt again.
+        last_error = KotUtils.describe_empty_reply(msg)
+        last_error_class = "EmptyReply"
+        warn "[#{id}] #{last_error}" unless QUIET
+        chat = new_chat.call
+        send_prompt = true
+        next
+      end
+      send_prompt = false
       parsed_json = JSON.parse(strip_json_fences(raw))
       valid_roles = VALIDATE_ROLES.call(parsed_json, id, actors)
     rescue JSON::ParserError, RuntimeError => e

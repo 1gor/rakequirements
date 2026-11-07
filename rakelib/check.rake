@@ -128,11 +128,13 @@ namespace :check do
       end
     end
 
-    # A compound actor («А/Б/В», outside parentheses) usually yields one role
-    # per part; fewer roles may mean a part was dropped.
+    # A compound actor («А/Б/В», outside brackets) usually yields one role per
+    # part; fewer roles may mean a part was dropped. Commas are not separators
+    # («Лицо, участвующее в деле»), nor slashes in short abbreviations («с/з»).
     roles.group_by(&:first).each do |pid, prs|
       prs.flat_map { |_, r| (r["actors"] || []).map { |a| [a, r["role"]] } }.group_by(&:first).each do |actor, pairs|
-        parts = actor.gsub(/\([^)]*\)/, "").split(%r{[/;]|,(?=\s*[[:alpha:]])}).map(&:strip).reject(&:empty?)
+        parts = actor.gsub(/\([^)]*\)|\[[^\]]*\]/, "").gsub(%r{(?<![[:alpha:]])([[:alpha:]]{1,2})/([[:alpha:]]{1,2})(?![[:alpha:]])}, '\1\2')
+          .split(%r{[/;]}).map(&:strip).reject(&:empty?)
         next if parts.size <= pairs.size
 
         findings << {kind: "частей больше, чем ролей", process_id: pid, actor: actor, roles: pairs.map(&:last)}

@@ -88,6 +88,29 @@ module KotUtils
     codes.uniq.sort.reject { |code| code == exclude }
   end
 
+  # The records of a .jsonl file, skipping blank lines.
+  def read_jsonl(path)
+    File.foreach(path, encoding: "UTF-8").reject { |line| line.strip.empty? }.map { |line| JSON.parse(line) }
+  end
+
+  # What came back when an LLM reply has no text: the stop reason, the content
+  # block types and the token counts, for the .err file. A reply holding only a
+  # thinking block with stop_reason "max_tokens" means the model spent its
+  # whole output budget on reasoning.
+  def describe_empty_reply(msg)
+    body = msg.raw.respond_to?(:body) ? msg.raw.body : nil
+    if body.is_a?(String)
+      body = begin
+        JSON.parse(body)
+      rescue JSON::ParserError
+        nil
+      end
+    end
+    body = {} unless body.is_a?(Hash)
+    blocks = Array(body["content"]).map { |b| b.is_a?(Hash) ? b["type"] : b.class.name }
+    "Empty reply: stop_reason=#{body["stop_reason"].inspect}, content blocks=#{blocks.inspect}, " \
+      "output_tokens=#{msg.output_tokens.inspect}, thinking=#{msg.thinking&.text.to_s.size} chars"
+  end
 
   # THE ATOMIC WRITE PATTERN
   # Yields a temporary path. Only moves it to 'target_path' if the block succeeds.
