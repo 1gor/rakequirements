@@ -36,8 +36,10 @@ WRITE_REGISTRY = ->(target, records, errors, warnings) {
 
   content = records.map { |r| JSON.generate(r) + "\n" }.join
   note = warnings.empty? ? "" : ", #{warnings.size} warnings in #{warn_file}"
+  # Unchanged: keep the old timestamp. The target then stays older than the
+  # parser and is re-checked on every run, so this line is shown only on demand.
   if File.exist?(target) && File.read(target, encoding: "UTF-8") == content
-    puts "[SAME] #{target} (#{records.size}#{note})"
+    puts "[SAME] #{target} (#{records.size}#{note})" if ENV["VERBOSE"]
     return
   end
 

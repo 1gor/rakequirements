@@ -153,6 +153,23 @@ module AnalystRegistry
     [use_cases, warnings]
   end
 
+  PASSPORT_KEYS = ["Наименование процесса", "Суть процесса", "Участники процесса"].freeze
+
+  # The passport table at the top of the description, { key => value } for
+  # PASSPORT_KEYS. ТБП5 and ТБП32 have no passport; the result is then empty.
+  def passport(markdown)
+    markdown.lines(chomp: true).first(15).select { |l| table_row?(l) }.each_with_object({}) do |line, h|
+      key, value = cells(line)
+      h[key] = value if PASSPORT_KEYS.include?(key) && value && !value.empty?
+    end
+  end
+
+  # The document title without the «[To be] КБП61.» prefix.
+  def title(markdown)
+    line = markdown.lines(chomp: true).find { |l| l.start_with?("# ") } or return ""
+    plain(line.sub(/\A#+/, "")).sub(/\A(\[[^\]]*\][[:space:]]*)?(KBP|TBP|OBP|КБП|ТБП|ОБП)[[:space:]]?\d+[[:space:].:—–-]*/i, "")
+  end
+
   # Hand-kept stories for processes whose registry is empty
   # (raw/data/user_stories_supplement.jsonl), as story records.
   def supplement(path, pid)

@@ -1,96 +1,61 @@
-You are given a description of the business process with the {process_id} = '%{process_id}' taken from a BPMN2 diagram. It is a sequence of steps for several business actors.
+You are given the actors of business process '%{process_id}', taken verbatim from the column «Я КАК» of the analysts' user story registry, together with the stories themselves and the process passport. The stories are approved by the client: never change, merge or reword them.
 
-You will also receive a PARTICIPANT DICTIONARY (СПРАВОЧНИК УЧАСТНИКОВ ПРОЦЕССА) — a JSON array of participant groups with member codes. You MUST link each extracted role to a specific member from this dictionary.
-
-Focus on the "Описание процесса (актор и описание)" column to identify all participant actors in this workflow. If no such column exists, deduce participant actors (user roles) from the text.
+You also receive:
+- PARTICIPANT DICTIONARY (СПРАВОЧНИК УЧАСТНИКОВ ПРОЦЕССА): participant groups and their member codes. Participants are the types of users of the System.
+- ROLE PRECEDENTS (РОЛИ ИЗ УТВЕРЖДЁННОГО КОТ): role names and their participant codes from the approved version of this document.
 
 ## TASK
-Extract all unique actor roles and generate a JSON array of role objects with these fields:
-- `role_id`: Formatted as "%{process_id}-R-XX" (where XX is zero-padded sequential numbering: 01, 02, 03...)
-- `role`: The role name in Russian (singular form)
-- `description`: A concise description of this role's responsibilities within this specific process in Russian
-- `participant`: An object with `code` and `name` from the PARTICIPANT DICTIONARY, linking this role to the most specific matching member
+
+Build the role registry of this process: a list of atomic roles, each linked to exactly one participant, and, for every role, the ids of the actors (A1, A2, ...) it comes from.
 
 ## RULES
-1. **Inclusion criteria:**
-   - ONLY include actors explicitly mentioned in the process steps
-   - Each role must represent a human or organizational participant
 
-2. **Exclusion criteria:**
-   - DO NOT include "Система" (System) or automated actors
-   - DO NOT include generic "Auto" roles
+1. **Split compound actors.** An actor that names several roles, separated by «/», «,», «;» or «или», becomes several roles:
+   - «Помощник судьи/ секретарь СЗ/судья/иной сотрудник суда» → «Помощник судьи», «Секретарь судебного заседания», «Судья», «Сотрудник суда»
+   - «Председатель суда / заместитель председателя суда» → «Председатель суда», «Заместитель председателя суда»
+   - «Сотрудник/кандидат на должность» → «Сотрудник суда», «Кандидат на должность»
+2. **A parenthesis clarifies the head noun and adds no roles:**
+   - «Заявитель (Кредитор/Должник/АУ/Иное ЛУВД)» → «Заявитель»
+   - «ЛУВД (в т.ч заинтересованное лицо)» → «Лицо, участвующее в деле»
+3. **One role per distinct role in the process.** When several actors contain the same role, create the role once and list all those actors.
+4. **Name roles as singular professional titles in Russian** and expand abbreviations:
+   - «Секретарь СЗ» → «Секретарь судебного заседания»
+   - «Канцелярия» → «Сотрудник канцелярии», «Отдел кадров» → «Сотрудник отдела кадров»
+   - «Иные ЛУВД» → «Иное лицо, участвующее в деле»
+   - A collegial panel of judges is its member: «Коллегия судей», «Тройка судей», «Судебный состав» → «Судья»
+   - Never use a group name from the dictionary («Суд», «Лица, участвующие в деле», «Стороны по делу») as a role.
+5. **Follow the precedents.** When a role of this process means the same as a precedent role, use the precedent's name and participant code exactly. The precedents keep this registry consistent with the approved document.
+6. **Never create a role for «Система»** or any other automated actor.
+7. **Link each role to the most specific member code:**
+   - Истец, Ответчик, Заявитель, Должник, Кредитор, Взыскатель, Арбитражный управляющий, Лицо, участвующее в деле → P-01.1
+   - Третье лицо, Заинтересованное лицо, Иное лицо, участвующее в деле → P-01.2
+   - Председатель суда, Заместитель председателя суда → P-02.1
+   - Председатель судебного состава, Председатель судебной коллегии → P-02.2
+   - Судья → P-02.3
+   - Помощник судьи, Секретарь судебного заседания and other staff of a judge → P-02.4
+   - Court staff outside a judge's office (канцелярия, архив, отделы кадров, бухгалтерии, информатизации, МТО, делопроизводства, пресс-служба, their heads, commissions of court staff) → P-02.5
+   - Эксперт, Свидетель, Переводчик, Специалист, Экспертное учреждение → P-03.1
+   - Persons and organisations outside the court that are only indirectly involved in the process: Госархив, поставщик, подрядчик, эксплуатирующая организация, работник почтовой связи, кандидат на должность → P-03.2
+   - Арбитражный заседатель → P-04.1; Судебный примиритель → P-05.1; Медиатор → P-05.2
+   In a supporting process (OBP...) the actors are court staff (P-02.x) unless they are clearly outside persons or organisations.
+8. **Description:** one or two sentences in Russian on what the role does in THIS process, based on its stories. Do not restate the participant's description.
 
-3. **Role naming:**
-   - Use singular Russian nouns (e.g., "Судья" not "Судьи")
-   - Transform actor mentions from the steps into proper role titles using your knowledge of Russian arbitration court and general business knowledge
-   - Ensure role names are professional and appropriate for legal documentation
+## OUTPUT
 
-4. **Description requirements:**
-   - Write compact, precise descriptions in Russian
-   - Focus on responsibilities specific to THIS process %{process_id}
+Return only a JSON object, without comments:
 
-5. **Participant linkage (CRITICAL):**
-   - Each role MUST be linked to the most specific member code from the PARTICIPANT DICTIONARY
-   - Use your knowledge of Russian arbitration court domain to select the correct participant
-   - Common mappings:
-     - Истец, Ответчик, Заявитель, Должник, Кредитор → P-01.1 (Стороны по делу)
-     - Третье лицо, Заинтересованное лицо → P-01.2 (Третьи лица и заинтересованные лица)
-     - Председатель суда → P-02.1
-     - Председатель судебного состава → P-02.2
-     - Судья → P-02.3
-     - Помощник судьи, Секретарь судебного заседания → P-02.4 (Сотрудник аппарата судьи)
-     - Сотрудник канцелярии, Сотрудник архива, Специалист по делопроизводству → P-02.5 (Сотрудник аппарата суда)
-     - Эксперт, Свидетель, Переводчик → P-03.1 (Иной участник процесса)
-     - Арбитражный заседатель → P-04.1
-     - Судебный примиритель → P-05.1
-     - Медиатор → P-05.2
-   - The `participant.code` MUST be one of the member codes from the dictionary (e.g., P-01.1, P-02.3)
-   - The `participant.name` MUST match the member name from the dictionary for that code
-
-6. **Anti-generalization rule:**
-   - DO NOT create vague, generic roles like "Лица, участвующие в деле" or "Суд" — these are GROUP names from the dictionary, not specific roles
-   - Always create specific roles: "Истец", "Ответчик", "Судья", etc.
-   - Multiple specific roles can share the same participant code (e.g., both Истец and Ответчик map to P-01.1)
-
-## EXPECTED JSON STRUCTURE EXAMPLE
-[
-  {
-    "role_id": "KBP1-R-01",
-    "role": "Истец",
-    "description": "Роль участника процесса, инициирующего исковое производство путем подачи искового заявления в суд.",
-    "participant": {
-      "code": "P-01.1",
-      "name": "Стороны по делу (Истец, Ответчик, Заявители, Должник, Кредиторы)"
+{
+  "roles": [
+    {
+      "role": "Судья",
+      "participant_code": "P-02.3",
+      "actors": ["A2", "A5"],
+      "description": "Рассматривает заявление о принятии к производству и принимает судебный акт по существу спора."
     }
-  },
-  {
-    "role_id": "KBP1-R-02",
-    "role": "Судья",
-    "description": "Должностное лицо, рассматривающее дело и выносящее судебные акты.",
-    "participant": {
-      "code": "P-02.3",
-      "name": "Судья"
-    }
-  }
-]
+  ]
+}
 
-## CRITICAL: Handle System Role Anti-pattern
-
-Sometimes you will encounter process steps with System role ("Система", "Автоматический модуль", etc.). This is weak domain modeling and must be corrected.
-
-**NEVER create a System Role**, but do not lose steps associated with this role. Instead:
-
-1. Look at the context of surrounding steps (preceding and following human roles)
-2. Examine the `Входящие материалы` and `Исходящие материалы` columns for clues about actual responsibility
-3. Use your knowledge of Russian arbitration courts to infer which human role is the actual actor in such use-cases
-4. Automated routing decisions, document categorization, and procedural determinations are **judicial functions** and should be assigned to **Судья**
-5. Ensure all text in the JSON output uses valid UTF-8 encoding and is in Russian (except role_id which is in Latin)
-
-## Constraints
-
-- ONLY create Role entities for column role values explicitly mentioned in the process steps
-- DO NOT create artificial specializations or theoretical organizational roles
-- Each role MUST correspond to a real actor mentioned in the process workflow, but does not need to be named exactly like the actor
-- Each role MUST have a valid `participant` object with a `code` from the PARTICIPANT DICTIONARY
-
-Output the JSON object.
+- Order the roles by the first actor they come from (roles of A1 first).
+- Do not output role ids: the pipeline assigns them.
+- Every actor id must appear in at least one role; use only the ids given.
+- All text is in Russian, except the participant codes and the actor ids.

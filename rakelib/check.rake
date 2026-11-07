@@ -106,6 +106,47 @@ namespace :check do
     end
   end
 
+  desc "Check stage 3 roles across processes: participants that differ by process or from the May KOT, compound actors split into fewer roles than they name"
+  task :role_participants do
+    output_path = "out/check_role_participants.jsonl"
+    FileUtils.mkdir_p("out")
+
+    precedents = File.foreach("raw/data/may_role_participants.jsonl").map { |l| JSON.parse(l) }
+      .to_h { |r| [r["role"], r["participant_code"]] }
+    roles = PROCESS_IDS.flat_map do |id|
+      f = "work/ba/#{id}/#{id}_roles.jsonl"
+      File.exist?(f) ? File.foreach(f).reject { |l| l.strip.empty? }.map { |l| [id, JSON.parse(l)] } : []
+    end
+
+    findings = []
+    roles.group_by { |_, r| r["role"] }.sort.each do |name, rs|
+      codes = rs.group_by { |_, r| r.dig("participant", "code") }.transform_values { |v| v.map(&:first) }
+      findings << {kind: "разные участники", role: name, codes: codes} if codes.size > 1
+      precedent = precedents[name]
+      if precedent && codes.keys != [precedent]
+        findings << {kind: "не как в КОТ мая", role: name, precedent: precedent, codes: codes}
+      end
+    end
+
+    # A compound actor («А/Б/В», outside parentheses) usually yields one role
+    # per part; fewer roles may mean a part was dropped.
+    roles.group_by(&:first).each do |pid, prs|
+      prs.flat_map { |_, r| (r["actors"] || []).map { |a| [a, r["role"]] } }.group_by(&:first).each do |actor, pairs|
+        parts = actor.gsub(/\([^)]*\)/, "").split(%r{[/;]|,(?=\s*[[:alpha:]])}).map(&:strip).reject(&:empty?)
+        next if parts.size <= pairs.size
+
+        findings << {kind: "частей больше, чем ролей", process_id: pid, actor: actor, roles: pairs.map(&:last)}
+      end
+    end
+
+    File.open(output_path, "w") { |f| findings.each { |r| f.puts(JSON.generate(r)) } }
+
+    new_names = roles.map { |_, r| r["role"] }.uniq.reject { |n| precedents.key?(n) }
+    puts "  Roles: #{roles.size} in #{roles.map(&:first).uniq.size} processes, #{new_names.size} names not in the May KOT"
+    findings.group_by { |f| f[:kind] }.each { |kind, fs| puts "  #{kind}: #{fs.size}" }
+    puts "  wrote #{output_path}"
+  end
+
   desc "Run all quality checks"
   task all: %i[latin_in_stories latin_in_roles]
 end
