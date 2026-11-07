@@ -47,6 +47,18 @@ module DocHelpers
     results
   end
 
+  # Load one per-process artifact (work/ba/{id}/{id}_{suffix}.jsonl) for every
+  # active process, as [process_id, parsed_object] pairs in PROCESS_IDS order.
+  # Directories of merged or dropped processes left in work/ba are never read.
+  def load_process_jsonl(suffix)
+    PROCESS_IDS.flat_map do |id|
+      path = "work/ba/#{id}/#{id}_#{suffix}.jsonl"
+      next [] unless File.exist?(path)
+
+      File.foreach(path).reject { |line| line.strip.empty? }.map { |line| [id, JSON.parse(line)] }
+    end
+  end
+
   # Load components catalog as hash { ID => record }
   def load_components
     @components ||= begin

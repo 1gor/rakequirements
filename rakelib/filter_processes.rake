@@ -3,39 +3,41 @@
 require "json"
 
 namespace :data do
-  desc "Filter processes.jsonl: drop processes without _tobe_opis docs, log reasons to processes-removed.jsonl"
+  desc "Derive processes.jsonl (active processes) and processes-removed.jsonl from processes-all.jsonl. " \
+       "OUT_DIR=dir writes both files elsewhere, to compare before replacing."
   task :filter_processes do
     all_path = "raw/data/processes-all.jsonl"
-    out_path = "raw/data/processes.jsonl"
-    removed_path = "raw/data/processes-removed.jsonl"
+    out_dir = ENV.fetch("OUT_DIR", "raw/data")
+    out_path = File.join(out_dir, "processes.jsonl")
+    removed_path = File.join(out_dir, "processes-removed.jsonl")
+
+    # Why a catalogued process is not active: its TOBE_* marker
+    # (merged into another process, or dropped), or no TO BE document.
+    removal_reason = lambda do |id|
+      dir = Dir.glob("#{Sources::PROCESSES_DIR}/#{id}_*/").min
+      next "папка процесса отсутствует" unless dir
+
+      marker = Sources.tobe_marker(dir.chomp("/"))
+      marker ? File.basename(marker) : "нет описания TO BE"
+    end
 
     kept = []
     removed = []
-
     File.foreach(all_path) do |line|
-      line = line.strip
-      next if line.empty?
+      next if line.strip.empty?
+
       row = JSON.parse(line)
-      slug = row["slug"]
-      tobe_dir = File.join("raw/processes", slug, "tobe")
-
-      unless Dir.exist?(tobe_dir)
-        removed << row.merge("reason" => "директория #{tobe_dir} отсутствует")
-        next
-      end
-
-      docs = Dir.glob(File.join(tobe_dir, "*.{docx,doc}")).select { |p| File.basename(p).include?("tobe") }
-      if docs.any?
+      if SOURCE_BY_ID.key?(row["process_id"])
         kept << row
-        next
+      else
+        removed << row.merge("reason" => removal_reason.call(row["process_id"]))
       end
-
-      txts = Dir.glob(File.join(tobe_dir, "*.txt")).map { |p| File.basename(p) }
-      non_error = txts.reject { |n| n.include?("error") }
-      reason = non_error.first || txts.first || "отсутствует tobe документ"
-      removed << row.merge("reason" => reason)
     end
 
+    missing = PROCESS_IDS - kept.map { |r| r["process_id"] }
+    abort "Active processes missing from #{all_path}: #{missing.join(", ")}" unless missing.empty?
+
+    FileUtils.mkdir_p(out_dir)
     File.open(out_path, "w") { |f| kept.each { |r| f.puts JSON.generate(r) } }
     File.open(removed_path, "w") { |f| removed.each { |r| f.puts JSON.generate(r) } }
 

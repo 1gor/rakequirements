@@ -43,7 +43,7 @@ namespace :doc do
   desc "Р2. Реестр ролей участников процессов"
   task :roles do
     DocHelpers.ensure_output_dir
-    all_roles = DocHelpers.load_all_jsonl("work/ba/**/*_roles.jsonl")
+    all_roles = DocHelpers.load_process_jsonl("roles")
 
     # Group by process type prefix, deduplicate by role_id
     seen = Set.new
@@ -81,7 +81,7 @@ namespace :doc do
   desc "М1. Матрица «Участник/роль»"
   task :participant_role_matrix do
     DocHelpers.ensure_output_dir
-    all_roles = DocHelpers.load_all_jsonl("work/ba/**/*_roles.jsonl")
+    all_roles = DocHelpers.load_process_jsonl("roles")
 
     # Unique (participant_code, role_id) pairs
     pairs = Set.new
@@ -116,7 +116,7 @@ namespace :doc do
   desc "Р3. Реестр пользовательских историй"
   task :user_stories do
     DocHelpers.ensure_output_dir
-    all_stories = DocHelpers.load_all_jsonl("work/ba/**/*_user_stories.jsonl")
+    all_stories = DocHelpers.load_process_jsonl("user_stories")
 
     sorted_pids = DocHelpers.sort_process_ids(all_stories.map(&:first).uniq)
 
@@ -185,7 +185,7 @@ namespace :doc do
   desc "М2. Матрица «Процесс/пользовательская история»"
   task :process_story_matrix do
     DocHelpers.ensure_output_dir
-    all_stories = DocHelpers.load_all_jsonl("work/ba/**/*_user_stories.jsonl")
+    all_stories = DocHelpers.load_process_jsonl("user_stories")
     procs = DocHelpers.load_processes
 
     sorted_pids = DocHelpers.sort_process_ids(all_stories.map(&:first).uniq)
@@ -291,7 +291,7 @@ namespace :doc do
     pairs = Set.new
     data = []
 
-    Dir.glob("work/ba/**/*_components.jsonl").each do |cf|
+    PROCESS_IDS.map { |id| "work/ba/#{id}/#{id}_components.jsonl" }.select { |f| File.exist?(f) }.each do |cf|
       pid = File.basename(cf).split("_").first
       roles_file = cf.sub("_components.jsonl", "_roles.jsonl")
       next unless File.exist?(roles_file)
@@ -448,7 +448,7 @@ namespace :doc do
   task :story_component_matrix do
     DocHelpers.ensure_output_dir
     comps = DocHelpers.load_components
-    all_stories = DocHelpers.load_all_jsonl("work/ba/**/*_user_stories.jsonl")
+    all_stories = DocHelpers.load_process_jsonl("user_stories")
 
     sorted_pids = DocHelpers.sort_process_ids(all_stories.map(&:first).uniq)
 
