@@ -2,6 +2,8 @@ require "analyst_registry"
 
 STORIES_PROMPT_FILE = "raw/prompts/extract_user_stories.txt"
 STORIES_MODEL = ENV["STORIES_MODEL"] || "claude-opus-4.6"
+# Output token limit. Unset: May's 16384.
+STORIES_MAX_TOKENS = ENV["STORIES_MAX_TOKENS"]&.to_i&.then { |n| n.positive? ? n : nil } || 16_384
 
 # Build a lookup of full component definitions keyed by ID
 COMPONENTS_CATALOG = File.foreach(COMPONENTS_FILE)
@@ -133,7 +135,7 @@ LINK_STORIES = ->(src_path, roles_path, components_map_path, use_cases_path, opi
       assume_model_exists: true
     ).with_instructions(system_prompt)
       .with_temperature(temperature)
-      .with_params(max_tokens: 16_384)
+      .with_params(max_tokens: STORIES_MAX_TOKENS)
   }
   chat = new_chat.call
   send_prompt = true
