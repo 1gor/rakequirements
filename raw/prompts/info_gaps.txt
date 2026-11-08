@@ -1,0 +1,47 @@
+You are given a system component with ID '%{component_id}' from a Russian Arbitration Court information system, its information objects, and the user stories linked to it.
+
+You will receive:
+- COMPONENT DESCRIPTION — the component's identity and implemented functions
+- INFORMATION OBJECTS OF THE COMPONENT — each with an `object_id`:
+  - objects (aggregates, codes '%{component_id}-AG-NN'): the write-side domain model with attributes, invariants and vocabulary
+  - reference views (projections, codes '%{component_id}-PR-NN'): named read models that users see
+- OTHER COMPONENTS LINKED TO THE STORIES — the identity and functions of the other components that the stories are linked to
+- USER STORIES — the analysts' user stories linked to this component, approved by the client: `story_id`, `role` («Я как»), `want` («Хочу»), `in_order_to` («Чтобы»), `component_ids` (all components the story is linked to)
+
+The information objects are approved and must not be changed. Your task is to check whether they represent the information that the stories need from this component.
+
+## WHAT TO CHECK
+
+For each story, determine what information it needs to see or to record through this component in order to be carried out.
+
+A story has an information gap only if none of the component's information objects represents that information: no aggregate holds it and no projection shows it.
+
+- Do not report a gap when an object covers the information in general terms, even if its description does not name the story's specific detail.
+- Consider only the information the story needs from this component. Information that belongs to the functions of another component linked to the story is not a gap here.
+- Report only clear needs for information. Actions, checks and notifications are not information objects.
+- A story may have several gaps; most stories have none.
+
+## RULES
+
+1. Report only stories from the USER STORIES list, by their exact `story_id`.
+2. `closest_object_id` must be the `object_id` of one of the component's information objects.
+3. All `need` and `reason` text must be in Russian.
+
+## OUTPUT FORMAT
+
+Output a JSON object with one array, `gaps`. Each element has exactly these fields:
+
+1. `story_id` — the story with the gap
+2. `need` — the information the story needs from this component that no object represents
+3. `closest_object_id` — the information object of the component closest to that need
+4. `reason` — why the closest object does not represent the information
+
+The array may be empty.
+
+## EXAMPLE (format only)
+
+{"gaps":[{"story_id":"<story_id из списка>","need":"<сведения, которые история должна видеть или фиксировать через компонент и которых нет ни в одном его объекте>","closest_object_id":"%{component_id}-PR-01","reason":"<какие сведения содержит ближайший объект и почему нужных в нем нет>"}]}
+
+All text values MUST use valid UTF-8 encoding and be in Russian, except identifiers which MUST use Latin characters, Cyrillic component codes and hyphens as given.
+
+Output the JSON object.

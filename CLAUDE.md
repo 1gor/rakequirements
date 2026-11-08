@@ -70,7 +70,8 @@ Each stage defines file rules: targets only rebuild when sources are newer.
 
 | Stage | Task | Input | Output |
 |-------|------|-------|--------|
-| 6 | `projections` | aggregates.jsonl + all user_stories.jsonl | `work/ta/{cid}/{cid}_projections.jsonl` |
+| 6 | `projections` (frozen; `REBUILD_PROJECTIONS=1`) | aggregates.jsonl + all user_stories.jsonl | `work/ta/{cid}/{cid}_projections.jsonl` |
+| 6b | `info_gaps` (report only) | aggregates + projections + linked user_stories.jsonl | `work/ta/{cid}/{cid}_info_gaps.jsonl` |
 | 7 | `map_processes` | aggregates.jsonl + processes.jsonl (full catalogue) | `work/ta/{cid}/{cid}_processes.jsonl` |
 
 See `README.md` for recommended execution order and full pipeline description.

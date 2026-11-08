@@ -187,6 +187,44 @@ namespace :check do
     puts "  wrote #{output_path}"
   end
 
+  desc "Collect the information object gaps of stage 6b (stories whose information need from a component none of its objects represents)"
+  task :info_gaps do
+    output_path = "out/check_info_gaps.jsonl"
+    FileUtils.mkdir_p("out")
+    read = ->(f) { File.foreach(f).reject { |l| l.strip.empty? }.map { |l| JSON.parse(l) } }
+
+    story_files = PROCESS_IDS.map { |id| "work/ba/#{id}/#{id}_user_stories.jsonl" }
+    stories = story_files.flat_map { |f| read.call(f) }.to_h { |s| [s["story_id"], s] }
+    newest_stories = story_files.map { |f| File.mtime(f) }.max
+
+    gaps = []
+    not_checked = []
+    stale = []
+    File.foreach("raw/data/components.jsonl").map { |l| JSON.parse(l)["ID"] }.each do |cid|
+      file = "work/ta/#{cid}/#{cid}_info_gaps.jsonl"
+      next not_checked << cid unless File.exist?(file) && !File.exist?("#{file}.err")
+      stale << cid if File.mtime(file) < newest_stories
+
+      read.call(file).each do |g|
+        s = stories.fetch(g["story_id"], {})
+        gaps << {"component_id" => cid}.merge(g).merge("process_id" => g["story_id"][/\A[A-Z]+\d+/],
+          "role" => s["role"], "want" => s["want"], "in_order_to" => s["in_order_to"], "component_ids" => s["component_ids"])
+      end
+    end
+
+    File.open(output_path, "w") { |f| gaps.each { |g| f.puts(JSON.generate(g)) } }
+
+    puts "  Information gaps: #{gaps.size} in #{gaps.map { |g| g["component_id"] }.uniq.size} components " \
+      "(#{gaps.map { |g| g["story_id"] }.uniq.size} stories)"
+    gaps.group_by { |g| g["component_id"] }.sort_by { |_, v| -v.size }.each do |cid, v|
+      closest = v.map { |g| g["closest_object_id"] }.tally.sort_by { |_, n| -n }.map { |o, n| "#{o} #{n}" }.join(", ")
+      puts "    #{cid}: #{v.size} (closest: #{closest})"
+    end
+    puts "  Not checked or failed: #{not_checked.join(", ")}" unless not_checked.empty?
+    puts "  Older than the stories (rerun rake info_gaps): #{stale.join(", ")}" unless stale.empty?
+    puts "  wrote #{output_path}"
+  end
+
   desc "Run all quality checks"
   task all: %i[latin_in_stories latin_in_roles]
 end

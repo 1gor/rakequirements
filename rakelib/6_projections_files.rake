@@ -196,13 +196,18 @@ TARGET_PROJECTION_JSONLS = VALID_COMPONENT_IDS.map { |cid|
   "work/ta/#{cid}/#{cid}_projections.jsonl"
 }
 
-# All story files — listed as prerequisites so any story change triggers rebuild
-ALL_STORY_JSONLS = FileList["work/ba/**/*_user_stories.jsonl"]
+# Stage 6 is frozen for the November KOT (epic nov-kot, decision 5): the May
+# projections are table 10.2 and part of matrix 11 of the approved KOT. The
+# story files are no longer prerequisites (May listed them all, so any story
+# change rebuilt every projection), and the rule writes nothing unless
+# REBUILD_PROJECTIONS=1. Stage 6b (rake info_gaps) reports the information
+# needs of the stories that no object covers.
+REBUILD_PROJECTIONS = ENV["REBUILD_PROJECTIONS"] == "1"
 
 # Private multitask for parallel all-components build
 multitask :_all_projections => TARGET_PROJECTION_JSONLS
 
-desc "Generate projections (all: rake projections, single: rake 'projections[К-ПД]')"
+desc "Generate projections, frozen unless REBUILD_PROJECTIONS=1 (all: rake projections, single: rake 'projections[К-ПД]')"
 task :projections, [:component_id] do |_, args|
   if args[:component_id]
     cid = args[:component_id]
@@ -212,15 +217,18 @@ task :projections, [:component_id] do |_, args|
   end
 end
 
-# THE RULE: aggregates file + prompt + all story files -> projections.jsonl
+# THE RULE: aggregates file + prompt -> projections.jsonl (frozen, see above)
 rule(%r{^work/ta/([^/]+)/\1_projections\.jsonl$} => [
   proc { |t|
     cid = t.match(%r{work/ta/([^/]+)/})[1]
     "work/ta/#{cid}/#{cid}_aggregates.jsonl"
   },
-  PROJECTIONS_PROMPT_FILE,
-  *ALL_STORY_JSONLS
+  PROJECTIONS_PROMPT_FILE
 ]) do |t|
+  unless REBUILD_PROJECTIONS
+    warn "[FROZEN] #{t.name}: projections are frozen for the November KOT (REBUILD_PROJECTIONS=1 regenerates them)"
+    next
+  end
   cid = t.name.match(%r{work/ta/([^/]+)/})[1]
   aggregates_file = t.prerequisites[0]
   prompt_file = t.prerequisites[1]

@@ -27,7 +27,8 @@ The pipeline follows a Rake **pull model**: each stage defines file rules where 
 
 | # | Task | What it does | Input | Output |
 |---|------|-------------|-------|--------|
-| 6 | `rake projections` | **LLM**: identifies read-model projections each component must expose | `{cid}_aggregates.jsonl` + all `_user_stories.jsonl` | `work/ta/{cid}/{cid}_projections.jsonl` |
+| 6 | `rake projections` | **LLM**: identifies read-model projections each component must expose. Frozen for the November KOT: writes nothing unless `REBUILD_PROJECTIONS=1`, and story changes no longer make it rebuild | `{cid}_aggregates.jsonl` + all `_user_stories.jsonl` | `work/ta/{cid}/{cid}_projections.jsonl` |
+| 6b | `rake info_gaps` | **LLM**, report only: lists the stories whose information need from the component none of its objects (aggregates, projections) represents; components with more than 150 stories are checked in batches | `{cid}_aggregates.jsonl` + `{cid}_projections.jsonl` + the `_user_stories.jsonl` linked to the component | `work/ta/{cid}/{cid}_info_gaps.jsonl` |
 | 7 | `rake map_processes` | **LLM**: reverse-maps each component to its relevant business processes | `{cid}_aggregates.jsonl` + `raw/data/processes.jsonl` | `work/ta/{cid}/{cid}_processes.jsonl` |
 
 ### Utility tasks
@@ -56,7 +57,9 @@ rake check:component_gaps  # gaps of the review -> out/check_component_gaps.json
 
 # Component-centric analysis (stages 6-7)
 rake map_processes         # stage 7 (reverse mapping)
-rake projections           # stage 6 (uses stories; falls back to stage 7 for orphans)
+rake projections           # stage 6, frozen: REBUILD_PROJECTIONS=1 to regenerate
+rake info_gaps             # stage 6b, report only
+rake check:info_gaps       # gaps of stage 6b -> out/check_info_gaps.jsonl
 ```
 
 `apply_review` writes the stories after the components and then touches the review file, so neither `rake stories` nor `rake review_components` runs again because of it.
@@ -94,7 +97,10 @@ Uses a Z.ai Anthropic-compatible endpoint.
 | `PROJECTIONS_MODEL` | Model for projections | `claude-sonnet-4-5` |
 | `COMP_PROCESSES_MODEL` | Model for reverse mapping | `claude-sonnet-4-5` |
 | `REVIEW_COMPONENTS_MODEL` | Model for review pass | `claude-sonnet-4-5` |
-| `ROLES_MAX_TOKENS`, `COMPONENTS_MAX_TOKENS`, `STORIES_MAX_TOKENS`, `REVIEW_MAX_TOKENS` | Starting output budget of stages 3, 4, 5, 8; doubled after a reply that hits it (up to 131072) | `32000` |
+| `INFO_GAPS_MODEL` | Model for information object gaps | `PROJECTIONS_MODEL` |
+| `ROLES_MAX_TOKENS`, `COMPONENTS_MAX_TOKENS`, `STORIES_MAX_TOKENS`, `REVIEW_MAX_TOKENS`, `INFO_GAPS_MAX_TOKENS` | Starting output budget of stages 3, 4, 5, 8, 6b; doubled after a reply that hits it (up to 131072) | `32000` |
+| `INFO_GAPS_BATCH` | Most stories per stage 6b call | `150` |
+| `REBUILD_PROJECTIONS` | `1` lets stage 6 regenerate the frozen projections | off |
 | `LLM_TIMEOUT` | Minimum request timeout in seconds; each request gets at least one second per 30 budget tokens | `300` |
 | `RAKE_JOBS` | Tasks running at once (Z.ai concurrent-request limit) | `4` |
 | `QUIET` | Suppress progress output (`1`/`true`) | off |
