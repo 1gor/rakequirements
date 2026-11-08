@@ -20,8 +20,8 @@ The pipeline follows a Rake **pull model**: each stage defines file rules where 
 
 | # | Task | What it does | Input | Output |
 |---|------|-------------|-------|--------|
-| 8 | `rake review_components` | **LLM**: DDD expert reviews stories for missing component links against the full 76-component catalog | `{id}_opis.md` + `{id}_user_stories.jsonl` + `raw/data/components.jsonl` | `{id}_components_review.jsonl` |
-| 8a | `rake apply_review` | Merges review findings into `_components.jsonl` and `_user_stories.jsonl` | `{id}_components_review.jsonl` | updates existing files |
+| 8 | `rake review_components` | **LLM**: DDD expert reviews stories for missing component links against the full 76-component catalog, and reports component gaps (stories whose need no component implements) | `{id}_opis.md` + `{id}_user_stories.jsonl` + `raw/data/components.jsonl` | `{id}_components_review.jsonl` |
+| 8a | `rake apply_review` | Merges the missing links (not the gaps) into `_components.jsonl` and `_user_stories.jsonl`; skips reviews older than their stories | `{id}_components_review.jsonl` | updates existing files |
 
 ### Reverse pipeline (component-centric, per-component)
 
@@ -52,13 +52,14 @@ rake stories               # stage 5
 # Quality review pass (stage 8)
 rake review_components
 rake apply_review          # merges findings into stages 4+5 outputs
+rake check:component_gaps  # gaps of the review -> out/check_component_gaps.jsonl
 
 # Component-centric analysis (stages 6-7)
 rake map_processes         # stage 7 (reverse mapping)
 rake projections           # stage 6 (uses stories; falls back to stage 7 for orphans)
 ```
 
-After `apply_review`, re-running `rake stories` will regenerate user stories for any process whose component list was expanded.
+`apply_review` writes the stories after the components and then touches the review file, so neither `rake stories` nor `rake review_components` runs again because of it.
 
 ## Directory structure
 

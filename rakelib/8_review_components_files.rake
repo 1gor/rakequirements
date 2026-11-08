@@ -39,37 +39,58 @@ FULL_COMPONENT_IDS = File.foreach(COMPONENTS_FILE)
   .to_a
   .freeze
 
-VALIDATE_REVIEW = ->(parsed_json, id, valid_story_ids) {
-  additions = parsed_json.is_a?(Array) ? parsed_json : parsed_json["additions"]
-  raise "Expected a JSON array" unless additions.is_a?(Array)
+# Output token limit. Unset: the ruby_llm default (4096), as in May.
+REVIEW_MAX_TOKENS = ENV["REVIEW_MAX_TOKENS"]&.to_i&.then { |n| n.positive? ? n : nil }
 
-  # Empty array is valid — all stories may be correctly linked
-  return additions if additions.empty?
-
-  additions.each_with_index do |a, i|
-    %w[story_id add_component_id reason].each do |key|
-      raise "Missing '#{key}' at index #{i}" unless a.key?(key)
-    end
-
-    sid = a["story_id"]
-    unless valid_story_ids.include?(sid)
-      raise "Unknown story_id '#{sid}' at index #{i}. Valid: #{valid_story_ids.first(5).join(", ")}..."
-    end
-
-    cid = a["add_component_id"]
-    unless FULL_COMPONENT_IDS.include?(cid)
-      raise "Unknown component_id '#{cid}' at index #{i}"
-    end
-
-    reason = a["reason"].to_s
-    raise "Chinese characters in reason at index #{i}" if reason.match?(/\p{Han}/)
-    raise "Invalid foreign characters in reason at index #{i}" if reason.match?(/(?!\p{Cyrillic}|\p{Latin})\p{L}/)
-    raise "Reason too short at index #{i}" if reason.size < 20
-  end
-
-  additions
+REVIEW_TEXT_CHECK = ->(text, what, i, min) {
+  raise "Chinese characters in #{what} at index #{i}" if text.match?(/\p{Han}/)
+  raise "Invalid foreign characters in #{what} at index #{i}" if text.match?(/(?!\p{Cyrillic}|\p{Latin})\p{L}/)
+  raise "#{what.capitalize} too short at index #{i}" if text.size < min
 }
 
+# Returns [additions, gaps]. The November prompt asks for an object with both
+# arrays; a bare array (May's format) is read as additions without gaps.
+VALIDATE_REVIEW = ->(parsed_json, id, valid_story_ids) {
+  additions, gaps = parsed_json.is_a?(Array) ? [parsed_json, []] : [parsed_json["additions"], parsed_json["gaps"] || []]
+  raise "Expected a JSON object with arrays 'additions' and 'gaps'" unless additions.is_a?(Array) && gaps.is_a?(Array)
+
+  check_story = ->(sid, what, i) {
+    unless valid_story_ids.include?(sid)
+      raise "Unknown story_id '#{sid}' in #{what} at index #{i}. Valid: #{valid_story_ids.first(5).join(", ")}..."
+    end
+  }
+  check_component = ->(cid, what, i) {
+    raise "Unknown component_id '#{cid}' in #{what} at index #{i}" unless FULL_COMPONENT_IDS.include?(cid)
+  }
+
+  additions.each_with_index do |a, i|
+    raise "additions[#{i}] is not an object" unless a.is_a?(Hash)
+    %w[story_id add_component_id reason].each do |key|
+      raise "Missing '#{key}' in additions at index #{i}" unless a.key?(key)
+    end
+    check_story.call(a["story_id"], "additions", i)
+    check_component.call(a["add_component_id"], "additions", i)
+    REVIEW_TEXT_CHECK.call(a["reason"].to_s, "reason", i, 20)
+  end
+
+  gaps.each_with_index do |g, i|
+    raise "gaps[#{i}] is not an object" unless g.is_a?(Hash)
+    %w[story_id need closest_component_id reason].each do |key|
+      raise "Missing '#{key}' in gaps at index #{i}" unless g.key?(key)
+    end
+    check_story.call(g["story_id"], "gaps", i)
+    check_component.call(g["closest_component_id"], "gaps", i)
+    REVIEW_TEXT_CHECK.call(g["need"].to_s, "need", i, 10)
+    REVIEW_TEXT_CHECK.call(g["reason"].to_s, "reason", i, 20)
+  end
+
+  [additions.map { |a| a.slice("story_id", "add_component_id", "reason") },
+    gaps.map { |g| g.slice("story_id", "need", "closest_component_id", "reason") }]
+}
+
+# The review file holds May's addition records ({story_id, add_component_id,
+# reason}) followed by gap records ({story_id, need, closest_component_id,
+# reason}); apply_review uses only the additions, check:component_gaps the gaps.
 REVIEW_COMPONENTS = ->(id, opis_path, stories_path, prompt_path, target_path) {
   err_file = "#{target_path}.err"
 
@@ -99,61 +120,79 @@ REVIEW_COMPONENTS = ->(id, opis_path, stories_path, prompt_path, target_path) {
     warn "[#{id}] model=#{REVIEW_COMPONENTS_MODEL} temp=#{temperature} stories=#{valid_story_ids.size} prompt=#{user_prompt.size} chars"
   end
 
-  chat = RubyLLM.chat(
-    model: REVIEW_COMPONENTS_MODEL,
-    provider: :anthropic,
-    assume_model_exists: true
-  ).with_instructions(system_prompt)
-    .with_temperature(temperature)
+  new_chat = -> {
+    c = RubyLLM.chat(
+      model: REVIEW_COMPONENTS_MODEL,
+      provider: :anthropic,
+      assume_model_exists: true
+    ).with_instructions(system_prompt)
+      .with_temperature(temperature)
+    REVIEW_MAX_TOKENS ? c.with_params(max_tokens: REVIEW_MAX_TOKENS) : c
+  }
+  chat = new_chat.call
+  send_prompt = true
 
   attempts = 0
-  valid_additions = nil
+  result = nil
   last_error = nil
   last_error_class = nil
 
-  while attempts < max_retries && !valid_additions
+  while attempts < max_retries && !result
     attempts += 1
     begin
       t0 = Time.now
-      msg = if attempts == 1
-        warn "[#{id}] Submitting to LLM (attempt 1/#{max_retries})..." unless QUIET
+      msg = if send_prompt
+        warn "[#{id}] Submitting to LLM (attempt #{attempts}/#{max_retries})..." unless QUIET
         chat.ask(user_prompt)
       else
         warn "[#{id}] Retry #{attempts}/#{max_retries} — #{last_error}" unless QUIET
-        chat.ask("Your previous response failed schema validation: #{last_error}. Please correct your output and return ONLY the valid JSON array.")
+        chat.ask("Your previous response failed schema validation: #{last_error}. Please correct your output and return ONLY the valid JSON object.")
       end
       elapsed = (Time.now - t0).round(1)
 
-      raw = msg.content.dup.force_encoding("UTF-8")
+      raw = msg.content.to_s.dup.force_encoding("UTF-8")
       warn "[#{id}] Response received (#{elapsed}s, #{raw.size} chars). Validating..." unless QUIET
+      if raw.strip.empty?
+        # Nothing to correct: start a fresh conversation and send the prompt again.
+        last_error = KotUtils.describe_empty_reply(msg, target_path, attempts)
+        last_error_class = "EmptyReply"
+        warn "[#{id}] #{last_error}" unless QUIET
+        chat = new_chat.call
+        send_prompt = true
+        next
+      end
+      send_prompt = false
       parsed_json = JSON.parse(strip_json_fences(raw))
-      valid_additions = VALIDATE_REVIEW.call(parsed_json, id, valid_story_ids)
+      result = VALIDATE_REVIEW.call(parsed_json, id, valid_story_ids)
     rescue JSON::ParserError, RuntimeError => e
       last_error = e.message
       last_error_class = e.class.name
       warn "[#{id}] Validation failed: #{last_error}" unless QUIET
-    rescue RubyLLM::Error => e
+    rescue RubyLLM::Error, Faraday::Error => e
       last_error = e.message
       last_error_class = e.class.name
       warn "[#{id}] LLM error (#{last_error_class}): #{last_error}" unless QUIET
+      waited = KotUtils.recover_from_llm_error(chat, e, attempts, max_retries)
+      warn "[#{id}] Waited #{waited}s after the rate limit" if waited.positive? && !QUIET
     end
   end
 
-  unless valid_additions
+  unless result
     File.write(err_file, "#{last_error_class}: #{last_error}\n")
     warn "[FAIL] #{id}: #{last_error_class}: #{last_error} (logged to #{err_file})"
     return
   end
 
+  additions, gaps = result
   KotUtils.atomic_write(target_path) do |temp_file|
     File.open(temp_file, "w") do |f|
-      valid_additions.each { |a| f.puts(a.to_json) }
+      (additions + gaps).each { |r| f.puts(r.to_json) }
     end
   end
 
   FileUtils.rm_f(err_file)
-  label = valid_additions.empty? ? "no gaps found" : "#{valid_additions.size} missing links"
-  puts "[OK] #{target_path} (#{label})"
+  KotUtils.clear_thinking(target_path)
+  puts "[OK] #{target_path} (#{additions.size} missing links, #{gaps.size} gaps)"
 }
 
 # Apply review results: merge additions into _components.jsonl and _user_stories.jsonl
@@ -161,7 +200,15 @@ APPLY_REVIEW = ->(id) {
   review_file = "work/ba/#{id}/#{id}_components_review.jsonl"
   return unless File.exist?(review_file)
 
-  additions = File.foreach(review_file).map { |line| JSON.parse(line) }.to_a
+  # A review older than the stories was made for other stories (May's review
+  # files are still on disk until rake review_components rebuilds them).
+  stories_file = "work/ba/#{id}/#{id}_user_stories.jsonl"
+  if File.mtime(review_file) < File.mtime(stories_file)
+    warn "[SKIP] #{review_file} is older than #{stories_file}: run rake review_components first"
+    return
+  end
+
+  additions = File.foreach(review_file).map { |line| JSON.parse(line) }.select { |r| r["add_component_id"] }
   return if additions.empty?
 
   # 1. Add new component_ids to _components.jsonl
@@ -184,7 +231,6 @@ APPLY_REVIEW = ->(id) {
   end
 
   # 2. Add component_ids to _user_stories.jsonl
-  stories_file = "work/ba/#{id}/#{id}_user_stories.jsonl"
   stories = File.foreach(stories_file).map { |line| JSON.parse(line) }.to_a
   modified = 0
 
@@ -204,6 +250,9 @@ APPLY_REVIEW = ->(id) {
       end
     end
     puts "[MERGE] #{stories_file}: updated #{modified} story-component links"
+    # The stories changed only by applying this review: keep the review newer
+    # than its input, so that rake review_components does not review again.
+    FileUtils.touch(review_file)
   end
 }
 
@@ -230,7 +279,7 @@ task :apply_review, [:process_id] do |_, args|
   targets.each do |id|
     review_file = "work/ba/#{id}/#{id}_components_review.jsonl"
     next unless File.exist?(review_file)
-    count = File.foreach(review_file).count
+    count = File.foreach(review_file).count { |line| line.include?('"add_component_id"') }
     next if count == 0
     APPLY_REVIEW.call(id)
     applied += 1

@@ -2,7 +2,7 @@ You are a DDD (Domain-Driven Design) architect and arbitration court domain expe
 
 You are given:
 - PROCESS DESCRIPTION — the business process '%{process_id}'
-- USER STORIES — all generated user stories for this process, each linked to one or more system components
+- USER STORIES — the analysts' user stories for this process, approved by the client, each linked to one or more system components
 - FULL COMPONENT CATALOG — all 76 system components, including sub-components with `parent_id` fields
 
 ## TASK
@@ -12,6 +12,8 @@ Review each user story's `component_ids` and identify **missing component links*
 1. The story describes an action that clearly operates on data or state owned by a component not currently listed in that story's `component_ids`.
 2. A sub-component (with `parent_id`) should be used instead of or in addition to its parent — e.g., if a story references "учет активов должника" and links to К-ПДБ but not К-КМ-А, the sub-component К-КМ-А is missing.
 3. A supporting or cross-cutting component is needed but was omitted — e.g., a story about scheduling a hearing that links to К-СП but not К-ПЗ (scheduling).
+
+Then identify **component gaps** (see COMPONENT GAPS below).
 
 ## WHAT IS NOT MISSING
 
@@ -25,20 +27,40 @@ Do NOT flag a component as missing if:
 1. Ground every suggestion in the specific text of the user story (`want`, `in_order_to`) and the component's described functions.
 2. A story that already has 3+ components may not need more — be selective.
 3. For sub-components: if a story links to a parent but the story's action specifically involves the sub-component's domain, add the sub-component. Do NOT remove the parent.
-4. All `reason` text must be in Russian.
+4. All `reason` and `need` text must be in Russian.
+
+## COMPONENT GAPS
+
+A story has a component gap only if no component in the FULL COMPONENT CATALOG implements what the story asks of the System: neither its linked components nor any other component of the catalog has a described function that covers the need.
+
+- Do not report a gap when a component covers the need in general terms, even if its description does not name the story's specific detail.
+- Report only clear requirements on the System that no component of the catalog can take.
+- For each gap, state the unmet need, the closest component of the catalog and why it does not cover the need.
 
 ## OUTPUT FORMAT
 
-Output a JSON array. Each element represents one missing link:
+Output a JSON object with two arrays. Each element of `additions` is one missing link; each element of `gaps` is one story with a component gap:
 
 ```json
 {
-  "story_id": "KBP20-US-05",
-  "add_component_id": "К-КМ-А",
-  "reason": "История описывает инвентаризацию имущества должника, что является прямой функцией компонента «Конкурсная масса: Активы», а не общей функцией К-ПДБ."
+  "additions": [
+    {
+      "story_id": "KBP20-US-05",
+      "add_component_id": "К-КМ-А",
+      "reason": "История описывает инвентаризацию имущества должника, что является прямой функцией компонента «Конкурсная масса: Активы», а не общей функцией К-ПДБ."
+    }
+  ],
+  "gaps": [
+    {
+      "story_id": "KBP20-US-09",
+      "need": "Краткое описание потребности, которую не реализует ни один компонент каталога.",
+      "closest_component_id": "К-ПДБ",
+      "reason": "Почему ближайший компонент не покрывает эту потребность, со ссылкой на описание его функций."
+    }
+  ]
 }
 ```
 
-If no components are missing (all stories are correctly linked), return an empty array `[]`.
+If no components are missing, `additions` is an empty array `[]`. If there are no gaps, `gaps` is an empty array `[]`.
 
-Output the JSON array.
+Output the JSON object.

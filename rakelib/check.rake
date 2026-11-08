@@ -149,6 +149,44 @@ namespace :check do
     puts "  wrote #{output_path}"
   end
 
+  desc "Collect the component gaps of the stage 8 review (stories whose need no catalogue component implements) and the components linked to no story"
+  task :component_gaps do
+    output_path = "out/check_component_gaps.jsonl"
+    FileUtils.mkdir_p("out")
+    read = ->(f) { File.foreach(f).reject { |l| l.strip.empty? }.map { |l| JSON.parse(l) } }
+
+    gaps = []
+    not_reviewed = []
+    stale = []
+    linked = Hash.new(0)
+    PROCESS_IDS.each do |id|
+      review = "work/ba/#{id}/#{id}_components_review.jsonl"
+      stories_file = "work/ba/#{id}/#{id}_user_stories.jsonl"
+      stories = read.call(stories_file).to_h { |s| [s["story_id"], s] }
+      stories.each_value { |s| s["component_ids"].each { |c| linked[c] += 1 } }
+      next not_reviewed << id unless File.exist?(review) && !File.exist?("#{review}.err")
+      next stale << id if File.mtime(review) < File.mtime(stories_file)
+
+      read.call(review).select { |r| r.key?("need") }.each do |g|
+        s = stories[g["story_id"]]
+        gaps << g.merge("process_id" => id, "role" => s["role"], "want" => s["want"],
+          "in_order_to" => s["in_order_to"], "component_ids" => s["component_ids"])
+      end
+    end
+
+    File.open(output_path, "w") { |f| gaps.each { |g| f.puts(JSON.generate(g)) } }
+
+    catalogue = File.foreach("raw/data/components.jsonl").map { |l| JSON.parse(l)["ID"] }
+    puts "  Gaps: #{gaps.size} in #{gaps.map { |g| g["process_id"] }.uniq.size} processes"
+    gaps.group_by { |g| g["closest_component_id"] }.sort_by { |_, v| -v.size }.each do |cid, v|
+      puts "    closest #{cid}: #{v.size} (#{v.map { |g| g["story_id"] }.join(", ")})"
+    end
+    puts "  Not reviewed or failed: #{not_reviewed.join(", ")}" unless not_reviewed.empty?
+    puts "  Review older than its stories (rerun rake review_components): #{stale.join(", ")}" unless stale.empty?
+    puts "  Catalogue components linked to no story: #{(catalogue - linked.keys).join(", ")}"
+    puts "  wrote #{output_path}"
+  end
+
   desc "Run all quality checks"
   task all: %i[latin_in_stories latin_in_roles]
 end
