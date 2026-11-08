@@ -2,8 +2,9 @@ QUIET = %w[1 true yes].include?(ENV["QUIET"]&.downcase) unless defined?(QUIET)
 COMPONENTS_FILE = "raw/data/components.jsonl"
 COMPONENTS_PROMPT_FILE = "raw/prompts/map_components.txt"
 COMPONENTS_MODEL = ENV["COMPONENTS_MODEL"] || "claude-sonnet-4-5"
-# Output token limit. Unset: the ruby_llm default (4096), as in May.
-COMPONENTS_MAX_TOKENS = ENV["COMPONENTS_MAX_TOKENS"]&.to_i&.then { |n| n.positive? ? n : nil }
+# Output token limit (starting budget, doubled after a max_tokens reply).
+# Unset: KotUtils::DEFAULT_OUTPUT_TOKENS.
+COMPONENTS_MAX_TOKENS = KotUtils.output_budget("COMPONENTS_MAX_TOKENS")
 
 # Z.ai Anthropic endpoint: uses Bearer auth instead of x-api-key
 RubyLLM.configure do |config|
@@ -106,7 +107,7 @@ MAP_COMPONENTS = ->(opis_path, processes_path, prompt_path, components_path, tar
     user_prompt += DECIDE_ONCE_NOTE
     warn "[#{id}] Prompt gets the decide-once note (an earlier reply ran out of tokens)" unless QUIET
   }
-  decide_once.call if File.exist?(err_file) && File.read(err_file).start_with?("EmptyReply")
+  decide_once.call if File.exist?(err_file) && File.read(err_file).start_with?("EmptyReply", "TruncatedReply")
 
   system_prompt = %(
     You are an experienced business analyst and system architect with deep knowledge of Russian Arbitration Court processes. You write in fluent and correct technical Russian only, except for technical terms.
@@ -119,19 +120,24 @@ MAP_COMPONENTS = ->(opis_path, processes_path, prompt_path, components_path, tar
     warn "[#{id}] model=#{COMPONENTS_MODEL} temp=#{temperature} prompt=#{user_prompt.size} chars"
   end
 
+  # Output budget: doubled after a reply that ran out of it (see below).
+  budget = COMPONENTS_MAX_TOKENS
   new_chat = -> {
     c = RubyLLM.chat(
       model: COMPONENTS_MODEL,
       provider: :anthropic,
-      assume_model_exists: true
+      assume_model_exists: true,
+      context: KotUtils.llm_context(budget)
     ).with_instructions(system_prompt)
       .with_temperature(temperature)
-    COMPONENTS_MAX_TOKENS ? c.with_params(max_tokens: COMPONENTS_MAX_TOKENS) : c
+    budget ? c.with_params(max_tokens: budget) : c
   }
   chat = new_chat.call
   send_prompt = true
 
   attempts = 0
+  rate_waits = 0
+  correction = nil
   valid_mappings = nil
   last_error = nil
   last_error_class = nil
@@ -144,18 +150,24 @@ MAP_COMPONENTS = ->(opis_path, processes_path, prompt_path, components_path, tar
         warn "[#{id}] Submitting to LLM (attempt #{attempts}/#{max_retries})..." unless QUIET
         chat.ask(user_prompt)
       else
-        warn "[#{id}] Retry #{attempts}/#{max_retries} — #{last_error}" unless QUIET
-        chat.ask("Your previous response failed schema validation: #{last_error}. Please correct your output and return ONLY the valid JSON array.")
+        warn "[#{id}] Retry #{attempts}/#{max_retries} — #{correction}" unless QUIET
+        chat.ask("Your previous response failed schema validation: #{correction}. Please correct your output and return ONLY the valid JSON array.")
       end
       elapsed = (Time.now - t0).round(1)
 
       raw = msg.content.to_s.dup.force_encoding("UTF-8")
       warn "[#{id}] Response received (#{elapsed}s, #{raw.size} chars). Validating..." unless QUIET
-      if raw.strip.empty?
-        # Nothing to correct: start a fresh conversation and send the prompt again.
+      if raw.strip.empty? || KotUtils.out_of_budget?(msg)
+        # Nothing to correct (no answer, or one cut off at max_tokens): start a
+        # fresh conversation and send the prompt again, with a doubled budget
+        # when this one ran out; the same budget would fail the same way.
         last_error = KotUtils.describe_empty_reply(msg, target_path, attempts)
-        last_error_class = "EmptyReply"
+        last_error_class = raw.strip.empty? ? "EmptyReply" : "TruncatedReply"
         warn "[#{id}] #{last_error}" unless QUIET
+        if KotUtils.out_of_budget?(msg)
+          budget = KotUtils.larger_budget(budget)
+          warn "[#{id}] Next attempt with max_tokens=#{budget}" unless QUIET
+        end
         decide_once.call unless user_prompt.end_with?(DECIDE_ONCE_NOTE)
         chat = new_chat.call
         send_prompt = true
@@ -166,14 +178,18 @@ MAP_COMPONENTS = ->(opis_path, processes_path, prompt_path, components_path, tar
       valid_mappings = VALIDATE_COMPONENTS.call(parsed_json)
     rescue JSON::ParserError, RuntimeError => e
       last_error = e.message
+      correction = last_error
       last_error_class = e.class.name
       warn "[#{id}] Validation failed: #{last_error}" unless QUIET
     rescue RubyLLM::Error, Faraday::Error => e
       last_error = e.message
       last_error_class = e.class.name
       warn "[#{id}] LLM error (#{last_error_class}): #{last_error}" unless QUIET
-      waited = KotUtils.recover_from_llm_error(chat, e, attempts, max_retries)
-      warn "[#{id}] Waited #{waited}s after the rate limit" if waited.positive? && !QUIET
+      waited = KotUtils.recover_from_llm_error(chat, e)
+      if waited.positive? && (rate_waits += 1) <= KotUtils::MAX_RATE_WAITS
+        attempts -= 1 # a rate limit is not a failed attempt
+        warn "[#{id}] Waited #{waited}s after the rate limit (#{rate_waits}/#{KotUtils::MAX_RATE_WAITS}), trying again" unless QUIET
+      end
     end
   end
 

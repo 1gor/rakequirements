@@ -93,14 +93,48 @@ module KotUtils
     File.foreach(path, encoding: "UTF-8").reject { |line| line.strip.empty? }.map { |line| JSON.parse(line) }
   end
 
-  # What came back when an LLM reply has no text: the stop reason, the content
-  # block types and the token counts, for the .err file. A reply holding only a
-  # thinking block with stop_reason "max_tokens" means the model spent its
-  # whole output budget on reasoning. With a target, the reasoning is saved
-  # to tmp/thinking/ (ignored by git) for reading why.
+  # What came back when an LLM reply has no text or was cut off: the stop
+  # reason, the content block types and the token counts, for the .err file.
+  # A reply holding only a thinking block with stop_reason "max_tokens" means
+  # the model spent its whole output budget on reasoning. With a target, the
+  # reasoning is saved to tmp/thinking/ (ignored by git) for reading why.
   def describe_empty_reply(msg, target_path = nil, attempt = nil)
     saved = target_path && save_thinking(msg, target_path, attempt)
     describe_reply_body(msg) + (saved ? ", saved to #{saved}" : "")
+  end
+
+  # The reply stopped because it reached max_tokens: either nothing but
+  # thinking (empty) or an answer cut off in the middle (truncated JSON).
+  # Asking the same conversation to correct it, or resending with the same
+  # budget, fails the same way.
+  def out_of_budget?(msg)
+    reply_body(msg)["stop_reason"] == "max_tokens"
+  end
+
+  # GLM-5.x maximum output on Z.ai (docs.z.ai, Core Parameters).
+  MAX_OUTPUT_TOKENS = 131_072
+
+  # Starting output budget of every LLM stage unless its *_MAX_TOKENS is set.
+  # Tokens cost nothing on the subscription and the budget is only a ceiling;
+  # GLM-5.3 always thinks, and 4096 or 16000 often ran out before the answer.
+  DEFAULT_OUTPUT_TOKENS = 32_000
+
+  # The *_MAX_TOKENS value of a stage, or the default.
+  def output_budget(env_name)
+    ENV[env_name]&.to_i&.then { |n| n.positive? ? n : nil } || DEFAULT_OUTPUT_TOKENS
+  end
+
+  # Output budget for the next attempt after an out-of-budget reply: doubled
+  # (unset means ruby_llm's 4096), up to the model's maximum.
+  def larger_budget(budget)
+    [(budget || 4096) * 2, MAX_OUTPUT_TOKENS].min
+  end
+
+  # A ruby_llm context whose request timeout fits the output budget: at least
+  # the configured timeout (LLM_TIMEOUT), and one second per 30 output tokens
+  # (November replies came at about 70 tokens a second).
+  def llm_context(budget)
+    RubyLLM.context { |c| c.request_timeout = [RubyLLM.config.request_timeout, (budget || 4096) / 30].max }
   end
 
   THINKING_DIR = "tmp/thinking"
@@ -125,6 +159,16 @@ module KotUtils
   end
 
   def describe_reply_body(msg)
+    body = reply_body(msg)
+    blocks = Array(body["content"]).map { |b| b.is_a?(Hash) ? b["type"] : b.class.name }
+    text = msg.content.to_s
+    label = text.strip.empty? ? "Empty reply" : "Truncated reply (#{text.size} chars)"
+    "#{label}: stop_reason=#{body["stop_reason"].inspect}, content blocks=#{blocks.inspect}, " \
+      "output_tokens=#{msg.output_tokens.inspect}, thinking=#{msg.thinking&.text.to_s.size} chars"
+  end
+
+  # The provider's JSON response body of a reply, or {} when unavailable.
+  def reply_body(msg)
     body = msg.raw.respond_to?(:body) ? msg.raw.body : nil
     if body.is_a?(String)
       body = begin
@@ -133,23 +177,23 @@ module KotUtils
         nil
       end
     end
-    body = {} unless body.is_a?(Hash)
-    blocks = Array(body["content"]).map { |b| b.is_a?(Hash) ? b["type"] : b.class.name }
-    "Empty reply: stop_reason=#{body["stop_reason"].inspect}, content blocks=#{blocks.inspect}, " \
-      "output_tokens=#{msg.output_tokens.inspect}, thinking=#{msg.thinking&.text.to_s.size} chars"
+    body.is_a?(Hash) ? body : {}
   end
 
   # After an LLM error (no reply) the chat still holds the question that got
   # no answer, and the next ask would send it a second time. Drop it, then on
-  # a rate limit wait before the next attempt. Z.ai error 1302 «Rate limit
-  # reached for requests» is a short-term limit on requests, separate from the
-  # 5-hour plan quota (1308/1316); ruby_llm has already retried three times
-  # within a second. Returns the seconds waited (0 when nothing to wait for).
-  def recover_from_llm_error(chat, error, attempt, max_attempts)
-    chat.messages.pop if chat.messages.last&.role == :user
-    return 0 unless error.is_a?(RubyLLM::RateLimitError) && attempt < max_attempts
+  # a rate limit wait before trying again. Z.ai error 1302 «Rate limit reached
+  # for requests» is a short-term limit on concurrent requests, separate from
+  # the 5-hour plan quota (1308/1316); ruby_llm has already retried three
+  # times within a second. Returns the seconds waited (0: not a rate limit).
+  # The caller retries without counting the attempt, up to MAX_RATE_WAITS.
+  MAX_RATE_WAITS = 8
 
-    seconds = 30 * attempt + rand(15)
+  def recover_from_llm_error(chat, error)
+    chat.messages.pop if chat.messages.last&.role == :user
+    return 0 unless error.is_a?(RubyLLM::RateLimitError)
+
+    seconds = 30 + rand(45)
     sleep seconds
     seconds
   end

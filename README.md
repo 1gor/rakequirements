@@ -94,6 +94,9 @@ Uses a Z.ai Anthropic-compatible endpoint.
 | `PROJECTIONS_MODEL` | Model for projections | `claude-sonnet-4-5` |
 | `COMP_PROCESSES_MODEL` | Model for reverse mapping | `claude-sonnet-4-5` |
 | `REVIEW_COMPONENTS_MODEL` | Model for review pass | `claude-sonnet-4-5` |
+| `ROLES_MAX_TOKENS`, `COMPONENTS_MAX_TOKENS`, `STORIES_MAX_TOKENS`, `REVIEW_MAX_TOKENS` | Starting output budget of stages 3, 4, 5, 8; doubled after a reply that hits it (up to 131072) | `32000` |
+| `LLM_TIMEOUT` | Minimum request timeout in seconds; each request gets at least one second per 30 budget tokens | `300` |
+| `RAKE_JOBS` | Tasks running at once (Z.ai concurrent-request limit) | `4` |
 | `QUIET` | Suppress progress output (`1`/`true`) | off |
 
 All tasks support individual invocation:

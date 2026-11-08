@@ -2,8 +2,9 @@ require "analyst_registry"
 
 STORIES_PROMPT_FILE = "raw/prompts/extract_user_stories.txt"
 STORIES_MODEL = ENV["STORIES_MODEL"] || "claude-opus-4.6"
-# Output token limit. Unset: May's 16384.
-STORIES_MAX_TOKENS = ENV["STORIES_MAX_TOKENS"]&.to_i&.then { |n| n.positive? ? n : nil } || 16_384
+# Output token limit (starting budget, doubled after a max_tokens reply).
+# Unset: KotUtils::DEFAULT_OUTPUT_TOKENS.
+STORIES_MAX_TOKENS = KotUtils.output_budget("STORIES_MAX_TOKENS")
 
 # Build a lookup of full component definitions keyed by ID
 COMPONENTS_CATALOG = File.foreach(COMPONENTS_FILE)
@@ -128,18 +129,23 @@ LINK_STORIES = ->(src_path, roles_path, components_map_path, use_cases_path, opi
     warn "[#{id}] model=#{STORIES_MODEL} temp=#{temperature} stories=#{stories.size} use_cases=#{use_cases.size} components=#{candidate_ids.size} prompt=#{user_prompt.size} chars"
   end
 
+  # Output budget: doubled after a reply that ran out of it (see below).
+  budget = STORIES_MAX_TOKENS
   new_chat = -> {
-    RubyLLM.chat(
+    c = RubyLLM.chat(
       model: STORIES_MODEL,
       provider: :anthropic,
-      assume_model_exists: true
+      assume_model_exists: true,
+      context: KotUtils.llm_context(budget)
     ).with_instructions(system_prompt)
       .with_temperature(temperature)
-      .with_params(max_tokens: STORIES_MAX_TOKENS)
+    budget ? c.with_params(max_tokens: budget) : c
   }
   chat = new_chat.call
   send_prompt = true
   attempts = 0
+  rate_waits = 0
+  correction = nil
   links = nil
   last_error = nil
   last_error_class = nil
@@ -152,18 +158,24 @@ LINK_STORIES = ->(src_path, roles_path, components_map_path, use_cases_path, opi
         warn "[#{id}] Submitting to LLM (attempt #{attempts}/#{max_retries})..." unless QUIET
         chat.ask(user_prompt)
       else
-        warn "[#{id}] Retry #{attempts}/#{max_retries} — #{last_error}" unless QUIET
-        chat.ask("Your previous response failed validation: #{last_error} Please correct your output and return ONLY the valid JSON array.")
+        warn "[#{id}] Retry #{attempts}/#{max_retries} — #{correction}" unless QUIET
+        chat.ask("Your previous response failed validation: #{correction} Please correct your output and return ONLY the valid JSON array.")
       end
       elapsed = (Time.now - t0).round(1)
 
       raw = msg.content.to_s.dup.force_encoding("UTF-8")
       warn "[#{id}] Response received (#{elapsed}s, #{raw.size} chars). Validating..." unless QUIET
-      if raw.strip.empty?
-        # Nothing to correct: start a fresh conversation and send the prompt again.
+      if raw.strip.empty? || KotUtils.out_of_budget?(msg)
+        # Nothing to correct (no answer, or one cut off at max_tokens): start a
+        # fresh conversation and send the prompt again, with a doubled budget
+        # when this one ran out; the same budget would fail the same way.
         last_error = KotUtils.describe_empty_reply(msg, target_path, attempts)
-        last_error_class = "EmptyReply"
+        last_error_class = raw.strip.empty? ? "EmptyReply" : "TruncatedReply"
         warn "[#{id}] #{last_error}" unless QUIET
+        if KotUtils.out_of_budget?(msg)
+          budget = KotUtils.larger_budget(budget)
+          warn "[#{id}] Next attempt with max_tokens=#{budget}" unless QUIET
+        end
         chat = new_chat.call
         send_prompt = true
         next
@@ -173,14 +185,18 @@ LINK_STORIES = ->(src_path, roles_path, components_map_path, use_cases_path, opi
       links = VALIDATE_LINKS.call(JSON.parse(strip_json_fences(raw)), story_ids, candidate_ids)
     rescue JSON::ParserError, RuntimeError => e
       last_error = e.message
+      correction = last_error
       last_error_class = e.class.name
       warn "[#{id}] Validation failed: #{last_error}" unless QUIET
     rescue RubyLLM::Error, Faraday::Error => e
       last_error = e.message
       last_error_class = e.class.name
       warn "[#{id}] LLM error (#{last_error_class}): #{last_error}" unless QUIET
-      waited = KotUtils.recover_from_llm_error(chat, e, attempts, max_retries)
-      warn "[#{id}] Waited #{waited}s after the rate limit" if waited.positive? && !QUIET
+      waited = KotUtils.recover_from_llm_error(chat, e)
+      if waited.positive? && (rate_waits += 1) <= KotUtils::MAX_RATE_WAITS
+        attempts -= 1 # a rate limit is not a failed attempt
+        warn "[#{id}] Waited #{waited}s after the rate limit (#{rate_waits}/#{KotUtils::MAX_RATE_WAITS}), trying again" unless QUIET
+      end
     end
   end
 
