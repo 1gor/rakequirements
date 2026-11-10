@@ -175,7 +175,10 @@ namespace :doc do
           rows << DocHelpers.section_header_row(DocHelpers::PROCESS_TYPE_NAMES[prefix], 4)
         end
         p = procs[pid]
-        rows << [pid, p["name"], DocHelpers::PROCESS_TYPE_FULL[prefix], p["description"]]
+        # A line break in the catalogue text (TBP139-142) would reach the XML as
+        # a control character; Word shows it as a space, as the May KOT has it
+        description = p["description"].to_s.gsub(/[[:space:]]*\n[[:space:]]*/, " ")
+        rows << [pid, p["name"], DocHelpers::PROCESS_TYPE_FULL[prefix], description]
       end
 
       doc.table rows, &DocHelpers::TABLE_STYLE

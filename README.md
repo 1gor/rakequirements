@@ -66,6 +66,10 @@ rake doc:all               # tables (1)-(13) -> out/tables/*.docx
 rake doc:links             # every code a matrix uses is in its register
 rake doc:counts            # rows against the May KOT; frozen tables identical
 rake doc:assemble          # out/kot_skeleton.docx + tables -> out/kot_latest.docx
+
+# Text audit of the assembled document (no LLM; DOC=... for another .docx)
+rake audit:chars           # CJK, other scripts, invisible characters, Latin look-alikes in Russian words
+rake audit:latin           # English words outside codes, abbreviations, defined terms and the allowlist
 ```
 
 Matrix (9) «Компонент/участник процесса» is built per story: the participants of a story's roles meet the story's components. The tables of the technical design (7), (8), (10.1), (10.2), (11) and (13) are frozen for the November KOT, and `doc:counts` fails if they differ from `out/kot_2026-05-27.docx`.
