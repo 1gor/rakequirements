@@ -156,7 +156,11 @@ namespace :doc do
     DocHelpers.ensure_output_dir
     procs = DocHelpers.load_processes
 
-    sorted = DocHelpers.sort_process_ids(procs.keys)
+    # The active processes, the same set as the stories of tables 4 and 6
+    missing = PROCESS_IDS - procs.keys
+    raise "No catalogue record in raw/data/processes.jsonl for #{missing.join(", ")}" unless missing.empty?
+
+    sorted = DocHelpers.sort_process_ids(PROCESS_IDS)
 
     Caracal::Document.save("out/tables/5_reestr_processov.docx") do |doc|
       doc.h3 "Реестр процессов"
@@ -287,29 +291,24 @@ namespace :doc do
     DocHelpers.ensure_output_dir
     comps = DocHelpers.load_components
 
-    # For each process: load components + roles, derive (component, participant) pairs
+    # Per story (epic nov-kot, decision 7): the participants of the story's
+    # roles meet the story's components. Crossing all components of a process
+    # with all its participants pairs many that never meet in any story.
+    participant_of = DocHelpers.load_process_jsonl("roles").to_h do |_, r|
+      [r["role_id"], {code: r.dig("participant", "code"), name: r.dig("participant", "name")}]
+    end
+
     pairs = Set.new
     data = []
+    DocHelpers.load_process_jsonl("user_stories").each do |_, story|
+      participants = story["role_ids"].map do |rid|
+        participant_of.fetch(rid) { raise "#{story["story_id"]}: unknown role #{rid}" }
+      end
+      story["component_ids"].product(participants.uniq { |p| p[:code] }).each do |cid, p|
+        next unless pairs.add?([cid, p[:code]])
 
-    PROCESS_IDS.map { |id| "work/ba/#{id}/#{id}_components.jsonl" }.select { |f| File.exist?(f) }.each do |cf|
-      pid = File.basename(cf).split("_").first
-      roles_file = cf.sub("_components.jsonl", "_roles.jsonl")
-      next unless File.exist?(roles_file)
-
-      comp_ids = File.foreach(cf).map { |l| JSON.parse(l)["component_id"] }
-      participants = File.foreach(roles_file).map { |l|
-        r = JSON.parse(l)
-        {code: r.dig("participant", "code"), name: r.dig("participant", "name")}
-      }.uniq { |p| p[:code] }
-
-      comp_ids.each do |cid|
-        participants.each do |p|
-          key = [cid, p[:code]]
-          next if pairs.include?(key)
-          pairs << key
-          cname = comps.dig(cid, "Наименование компонента") || cid
-          data << {cid: cid, cname: cname, p_code: p[:code], p_name: p[:name]}
-        end
+        cname = comps.dig(cid, "Наименование компонента") || cid
+        data << {cid: cid, cname: cname, p_code: p[:code], p_name: p[:name]}
       end
     end
 

@@ -115,14 +115,13 @@ module DocAssemble
           puts "spliced TABLE #{slug}"
         end
       elsif text =~ PLACEHOLDER_RE
+        # A REF, or a TABLE placeholder inside running text, stands for the
+        # table's number. The skeleton has one of the latter for table 7, which
+        # the May KOT printed literally.
         new_text = text.gsub(PLACEHOLDER_RE) do
           kind, slug = $1, $2
-          if kind == "REF"
-            n = numbering[slug] or raise "REF to unknown slug #{slug}"
-            n.to_s
-          else
-            $~[0]
-          end
+          n = numbering[slug] or raise "#{kind} to unknown slug #{slug}"
+          n.to_s
         end
         p.node.xpath(".//w:t", "w" => "http://schemas.openxmlformats.org/wordprocessingml/2006/main").each(&:remove)
         first_r = p.node.xpath(".//w:r", "w" => "http://schemas.openxmlformats.org/wordprocessingml/2006/main").first
