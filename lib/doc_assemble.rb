@@ -57,6 +57,43 @@ module DocAssemble
     pPr.add_child(jc)
   end
 
+  # Lists inside a spliced table refer to the numbering of the table's own
+  # file, where Caracal gives every bullet list its own numId from 1 up. In the
+  # skeleton the same numIds are other lists: numId 1 is the heading outline,
+  # so the first bullet list of table 10.1 advanced the chapter numbers (3 was
+  # followed by 9, and 3.2.8 showed as 8.1.1), and the others came out as
+  # decimal lists. Pointing the table lists at new or existing list
+  # definitions made Word crash when updating the table of contents, so the
+  # tables get no Word lists at all: each item becomes a plain paragraph that
+  # starts with a dash. The tables hold one-level bullet lists only.
+  TABLE_BULLET = "– "
+
+  def inline_bullets!(tbl, src_path)
+    items = tbl.xpath(".//w:p[w:pPr/w:numPr]", NS)
+    return if items.empty?
+
+    src = Zip::File.open(src_path) { |z| Nokogiri::XML(z.read("word/numbering.xml")) }
+    items.map { |p| p.at_xpath("./w:pPr/w:numPr/w:numId", NS)["w:val"] }.uniq.each do |id|
+      abs = src.at_xpath("//w:num[@w:numId='#{id}']/w:abstractNumId", NS)&.[]("w:val")
+      fmt = abs && src.at_xpath("//w:abstractNum[@w:abstractNumId='#{abs}']/w:lvl[@w:ilvl='0']/w:numFmt", NS)&.[]("w:val")
+      raise "#{src_path}: list #{id} is #{fmt.inspect}, not a bullet list" unless fmt == "bullet"
+    end
+    items.each do |p|
+      level = p.at_xpath("./w:pPr/w:numPr/w:ilvl", NS)&.[]("w:val") || "0"
+      raise "#{src_path}: nested list (level #{level})" unless level == "0"
+
+      p.at_xpath("./w:pPr/w:numPr", NS).remove
+      first = p.at_xpath("./w:r", NS)
+      dash = Nokogiri::XML::Node.new("w:r", p.document)
+      dash.add_child(first.at_xpath("./w:rPr", NS).dup) if first&.at_xpath("./w:rPr", NS)
+      t = Nokogiri::XML::Node.new("w:t", p.document)
+      t["xml:space"] = "preserve"
+      t.content = TABLE_BULLET
+      dash.add_child(t)
+      first ? first.add_previous_sibling(dash) : p.add_child(dash)
+    end
+  end
+
   def collapse_category_row!(tr)
     cells = tr.xpath("./w:tc", NS)
     return if cells.size < 2
@@ -104,6 +141,7 @@ module DocAssemble
         fragment = Nokogiri::XML.fragment(tbl_xml).children.first
         target_doc.root.add_child(fragment.dup)
         imported = target_doc.root.children.last
+        inline_bullets!(imported, src)
         normalize_table!(imported)
         p.node.add_next_sibling(imported)
         if p.node.xpath("./w:pPr/w:sectPr", NS).any?
