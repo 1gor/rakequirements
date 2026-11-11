@@ -64,7 +64,7 @@ rake check:info_gaps       # gaps of stage 6b -> out/check_info_gaps.jsonl
 # KOT document (no LLM)
 rake doc:all               # tables (1)-(13) -> out/tables/*.docx
 rake doc:links             # every code a matrix uses is in its register
-rake doc:counts            # rows against the May KOT; frozen tables identical
+rake doc:counts            # rows against the May KOT; frozen tables identical but for approved corrections
 rake doc:assemble          # out/kot_skeleton.docx + tables -> out/kot_latest.docx
 
 # Text audit of the assembled document (no LLM; DOC=... for another .docx)
@@ -72,7 +72,7 @@ rake audit:chars           # CJK, other scripts, invisible characters, Latin loo
 rake audit:latin           # English words outside codes, abbreviations, defined terms and the allowlist
 ```
 
-Matrix (9) «Компонент/участник процесса» is built per story: the participants of a story's roles meet the story's components. The tables of the technical design (7), (8), (10.1), (10.2), (11) and (13) are frozen for the November KOT, and `doc:counts` fails if they differ from `out/kot_2026-05-27.docx`.
+Matrix (9) «Компонент/участник процесса» is built per story: the participants of a story's roles meet the story's components. The tables of the technical design (7), (8), (10.1), (10.2), (11) and (13) are frozen for the November KOT, and `doc:counts` fails if they differ from `out/kot_2026-05-27.docx` other than by the text corrections listed in `raw/data/kot_corrections.jsonl` (the analysts' remarks of 2026-11-10). Corrections are made in the data files with their mtimes kept, so that no LLM stage runs again.
 
 `apply_review` writes the stories after the components and then touches the review file, so neither `rake stories` nor `rake review_components` runs again because of it.
 

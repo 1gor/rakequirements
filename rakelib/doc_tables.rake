@@ -379,14 +379,7 @@ namespace :doc do
       rows = [DocHelpers.header_row(["Код объекта", "Наименование объекта", "Описание"], [3120, 3120, 3120])]
       aggregates.sort_by { |cid, _| cid }.each do |cid, agg|
         code = "#{cid}-AG-01"
-        full = agg["Name"].to_s
-        latin = full[/\A([A-Za-z][A-Za-z0-9]*)/, 1]
-        gloss = full[/\(([^)]+)\)\s*\z/, 1]
-        name = if gloss && latin
-          "#{gloss} (#{latin})"
-        else
-          full
-        end
+        name = DocHelpers.object_name(agg["Name"])
         attrs = agg["Attributes"] || []
         invs = agg["Invariants"] || []
 
@@ -417,11 +410,7 @@ namespace :doc do
 
     entries = []
     aggregates.each do |cid, agg|
-      full = agg["Name"].to_s
-      latin = full[/\A([A-Za-z][A-Za-z0-9]*)/, 1]
-      gloss = full[/\(([^)]+)\)\s*\z/, 1]
-      name = (gloss && latin) ? "#{gloss} (#{latin})" : full
-      entries << [cid, "#{cid}-AG-01", name]
+      entries << [cid, "#{cid}-AG-01", DocHelpers.object_name(agg["Name"])]
     end
     projections.each do |cid, proj|
       entries << [cid, proj["projection_id"], proj["name"]]

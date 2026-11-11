@@ -104,6 +104,16 @@ module DocHelpers
     "Я как #{story["role"]} хочу #{story["want"]}, чтобы #{story["in_order_to"]}"
   end
 
+  # Name of an information object (aggregate) as the KOT shows it: the stored
+  # «CreditorMeeting (Собрание кредиторов)» becomes «Собрание кредиторов
+  # (CreditorMeeting)»; the English part may have several words («Archival Case»).
+  # A name without a Russian part is shown as stored.
+  def object_name(stored)
+    full = stored.to_s
+    m = full.match(/\A([A-Za-z][^()]*?)\s*\(([^()]+)\)\s*\z/)
+    m ? "#{m[2]} (#{m[1]})" : full
+  end
+
   # Ensure output directory exists
   def ensure_output_dir
     FileUtils.mkdir_p("out/tables")

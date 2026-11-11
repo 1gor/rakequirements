@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "docx"
+require "json"
 require "set"
 
 # Checks of the generated KOT tables in out/tables (no LLM): row counts against
@@ -19,6 +20,25 @@ module DocCheck
     6_matrica_process_us 7_reestr_komponentov 8_matrica_komponent_tech 9_matrica_komponent_uchastnik
     10-1_reestr_info_objektov_obyekty 10-2_reestr_info_objektov_spravochniki 11_matrica_komponent_info
     12_matrica_us_komponent 13_trebovaniya_funkcii].freeze
+
+  # Text corrections of the frozen tables approved after May (the analysts'
+  # remarks of 2026-11-10). Each turns `old` into `new` in the May rows that
+  # have a cell equal to one of `keys`; doc:counts compares the November tables
+  # with May plus these corrections, so any other difference still fails.
+  CORRECTIONS = "raw/data/kot_corrections.jsonl"
+
+  def corrections = File.exist?(CORRECTIONS) ? File.foreach(CORRECTIONS).map { |l| JSON.parse(l) } : []
+
+  # May rows with the corrections applied; counts in `used` how often each applied
+  def correct(rows, fixes, used)
+    rows.map do |cells|
+      fixes.each_with_index.reduce(cells) do |cs, (f, i)|
+        next cs unless f["keys"].any? { |k| cs.include?(k) }
+
+        cs.map { |c| c.include?(f["old"]) ? (used[i] += 1; c.sub(f["old"], f["new"])) : c }
+      end
+    end
+  end
 
   def path(slug) = "out/tables/#{slug}.docx"
 
@@ -50,6 +70,8 @@ namespace :doc do
     abort "Missing tables (run rake doc:all): #{missing.join(", ")}" unless missing.empty?
 
     may = Docx::Document.open(DocCheck::MAY_KOT).tables.map { |t| DocCheck.split(t) }
+    fixes = DocCheck.corrections
+    used = Array.new(fixes.size, 0)
     failures = []
     puts format("  %-42s %8s %8s %8s  %s", "table", "November", "May", "change", "rows")
     DocCheck::TABLES.each do |slug|
@@ -61,18 +83,24 @@ namespace :doc do
         next
       end
 
-      only_nov = (nov[:data] - ref[:data]).size
-      only_may = (ref[:data] - nov[:data]).size
-      same = only_nov.zero? && only_may.zero? && nov[:data] == ref[:data]
-      text = same ? "identical" : "#{only_nov} new, #{only_may} gone"
       frozen = DocCheck::FROZEN.include?(slug)
+      ref_data = frozen ? DocCheck.correct(ref[:data], fixes, used) : ref[:data]
+      corrected = frozen ? ref_data.zip(ref[:data]).count { |a, b| a != b } : 0
+      only_nov = (nov[:data] - ref_data).size
+      only_may = (ref_data - nov[:data]).size
+      same = only_nov.zero? && only_may.zero? && nov[:data] == ref_data
+      text = same ? "identical" : "#{only_nov} new, #{only_may} gone"
+      text += " (#{corrected} rows corrected)" if corrected.positive?
       failures << "#{slug}: frozen but #{text}" if frozen && !same
       puts format("  %-42s %8d %8d %+8d  %s%s", slug, nov[:data].size, ref[:data].size,
         nov[:data].size - ref[:data].size, text, frozen ? " (frozen)" : "")
     end
+    fixes.each_with_index do |f, i|
+      failures << "#{DocCheck::CORRECTIONS}: «#{f["old"]}» (#{f["keys"].first}) is in no May frozen table" if used[i].zero?
+    end
     puts "  Matrix rows differ in their codes (М1.001...) when rows are added or removed before them."
     abort failures.map { |f| "[FAIL] #{f}" }.join("\n") unless failures.empty?
-    puts "  Frozen tables identical to May."
+    puts fixes.empty? ? "  Frozen tables identical to May." : "  Frozen tables identical to May with the #{fixes.size} approved corrections of #{DocCheck::CORRECTIONS}."
   end
 
   desc "Check the links between the KOT registers and matrices in out/tables (every code a matrix uses is in its register)"
